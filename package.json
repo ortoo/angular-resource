@@ -1,8 +1,8 @@
 {
-  "name": "resource-angular",
+  "name": "@ortoo/resource-angular",
   "version": "1.0.0",
   "description": "Magical CRUD resource management for angular",
-  "main": "index.js",
+  "main": "lib/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
