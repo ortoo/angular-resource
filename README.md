@@ -1,4 +1,4 @@
-# resource-angular
+# angular-resource
 Magical CRUD resource management for angular
 
 ## Requires
