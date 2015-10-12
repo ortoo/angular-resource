@@ -1,0 +1,28 @@
+{
+  "name": "resource-angular",
+  "version": "1.0.0",
+  "description": "Magical CRUD resource management for angular",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ortoo/resource-angular.git"
+  },
+  "author": "James Sharp",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ortoo/resource-angular/issues"
+  },
+  "homepage": "https://github.com/ortoo/resource-angular#readme",
+  "devDependencies": {
+    "eslint": "^1.6.0"
+  },
+  "dependencies": {
+    "angular-localforage": "^1.2.3",
+    "jiff": "^0.7.2",
+    "moment": "^2.10.6",
+    "nedb": "^1.2.1"
+  }
+}
