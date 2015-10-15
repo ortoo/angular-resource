@@ -21,6 +21,7 @@
     "eslint": "^1.6.0"
   },
   "dependencies": {
+    "angular": "^1.4.7",
     "angular-localforage": "^1.2.3",
     "jiff": "^0.7.2",
     "localforage": "^1.3.0",
