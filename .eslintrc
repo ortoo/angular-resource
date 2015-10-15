@@ -25,6 +25,7 @@
         "node": true
     },
     "globals": {
+        "angular": false
     },
     "extends": "eslint:recommended"
 }
