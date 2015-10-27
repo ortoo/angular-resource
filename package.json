@@ -53,7 +53,8 @@
       "lodash.values": "npm:lodash.values@^3.0.0",
       "lodash.without": "npm:lodash.without@^3.2.1",
       "moment": "npm:moment@^2.10.6",
-      "nedb": "npm:nedb@^1.2.1"
+      "nedb": "npm:nedb@^1.2.1",
+      "events": "jspm:events@^0.1.1"
     },
     "devDependencies": {},
     "overrides": {
