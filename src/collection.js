@@ -1,5 +1,5 @@
 import events from 'events';
-import queryTransforms from './query-transforms';
+import * as queryTransforms from './query-transforms';
 
 // Recursively follows a property that links to the same model.
 // For now rather obtusively just redraw from the seeds when anything changes.

@@ -9,7 +9,7 @@ import union from 'lodash.union';
 import without from 'lodash.without';
 import angular from 'angular';
 
-import queryTransforms from './query-transforms';
+import * as queryTransforms from './query-transforms';
 
 // These are the operators nedb supports
 var simpleOperators = {
