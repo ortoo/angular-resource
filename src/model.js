@@ -97,6 +97,7 @@ export default function() {
         var res = this;
         res.$created = true;
         return this.$loc.$save(this.$toObject()).then(function() {
+          emitter.emit('updated', res);
           if (!res.$resolved) {
             res.$deferred.resolve(res);
             res.$resolved = true;
