@@ -11,23 +11,6 @@ import angular from 'angular';
 
 import * as queryTransforms from './query-transforms';
 
-// These are the operators nedb supports
-var simpleOperators = {
-  '$lt': true,
-  '$lte': true,
-  '$gt': true,
-  '$gte': true,
-  '$in': true,
-  '$nin': true,
-  '$ne': true,
-  '$exists': true,
-  '$regex': true,
-  '$size': true,
-  '$or': true,
-  '$and': true,
-  '$not': true
-};
-
 function normalizeQuery(qry) {
   if (!qry) {
     return;
@@ -40,69 +23,6 @@ function normalizeQuery(qry) {
   } else {
     return {find: qry};
   }
-}
-
-// Returns true if it is a simple query that we can process with nedb
-function qryIsSimple(qry) {
-  var simple = true;
-
-  if (Array.isArray(qry)) {
-    qry.forEach(function(val) {
-      var kosher = qryIsSimple(val);
-      if (!kosher) {
-        simple = false;
-        return false;
-      }
-    });
-  } else if (angular.isObject(qry)) {
-    for (var key in qry) {
-      var val = qry[key];
-      // The key is fine if it doesn't begin with $ or is a simple operator
-      var kosherKey = (key[0] !== '$') || simpleOperators[key];
-
-      if (!kosherKey) {
-        simple = false;
-        break;
-      }
-
-      var valKosher = qryIsSimple(val);
-
-      if (!valKosher) {
-        simple = false;
-        break;
-      }
-    }
-  }
-
-  return simple;
-}
-
-// Convert any _id searches to __id (which is where our id moved to)
-function _createDbFind(qry) {
-  if (Array.isArray(qry)) {
-    qry.forEach(function(val) {
-      _createDbFind(val);
-    });
-  } else if (angular.isObject(qry)) {
-    for (var key in qry) {
-      var val = qry[key];
-
-      // Convert the _id to __id searches
-      if (key === '_id') {
-        qry.__id = val;
-        delete qry._id;
-      }
-
-      _createDbFind(val);
-    }
-  }
-}
-
-function createDbFind(qry) {
-  // Converts the query into the form required for a db search. First clone the object
-  qry = clone(qry, true);
-  _createDbFind(qry);
-  return qry;
 }
 
 function extendQuery(qry1, qry2) {
@@ -247,7 +167,7 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
         // Store off the qry making sure its a promise
         qry = $q.when(_qry);
 
-        fallback = !qryIsSimple(_qry);
+        fallback = !db.qryIsSimple(_qry);
 
         // If we are fallingback then just resolve with our results. The server should
         // do the rest.
@@ -266,82 +186,58 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
           return prom;
         }
 
-        var deferred = $q.defer();
-        var find = createDbFind(_qry.find);
-        var limit = _qry.limit;
-        var skip = _qry.skip;
-        var sort = _qry.sort;
+        return db.query(_qry).then(function(ids) {
 
-        var cur = db.find(find);
+          // We can set the hasNext and hasPrev values to true here if we know there
+          // are some. However only the server has the definitive ability to say
+          // there arent any
+          results.$hasNext = false;
+          results.$hasPrev = false;
+          if (limit && ids.length > limit) {
+            // We have more results to fetch
+            results.hasNext = true;
+            results.$hasNext = true;
 
-        if (sort) {
-          cur = cur.sort(sort);
-        }
-        if (skip) {
-          cur = cur.skip(skip);
-        }
-        if (limit) {
-          // We go + 1 so we can tell if there are any more results
-          cur = cur.limit(limit + 1);
-        }
+            // Trim the results down to size
+            ids.length -= 1;
+          }
 
-        cur.exec(function(err, docs) {
-          $rootScope.$apply(function() {
-            if (err) {
-              deferred.reject(err);
-              return;
-            }
+          var skip = _qry.skip;
 
-            // We can set the hasNext and hasPrev values to true here if we know there
-            // are some. However only the server has the definitive ability to say
-            // there arent any
-            results.$hasNext = false;
-            results.$hasPrev = false;
-            if (limit && docs.length > limit) {
-              // We have more results to fetch
-              results.hasNext = true;
-              results.$hasNext = true;
+          if (skip) {
+            results.hasPrev = true;
+            results.$hasPrev = true;
+          }
 
-              // Trim the results down to size
-              docs.length -= 1;
-            }
+          // Calculate paging options
+          currentLimit = ids.length;
+          currentSkip = skip || 0;
+          lastBatchSize = lastBatchSize || ids.length;
 
-            if (skip) {
-              results.hasPrev = true;
-              results.$hasPrev = true;
-            }
+          // Go to resource types
+          var tmpResults = ids.map(toRes);
 
-            // Calculate paging options
-            currentLimit = docs.length;
-            currentSkip = skip || 0;
-            lastBatchSize = lastBatchSize || docs.length;
+          // Do we need to do a transform?
+          var rprom;
+          if (angular.isFunction(results.transform)) {
+            rprom = $q.when(results.transform(tmpResults));
+          } else {
+            rprom = $q.when(tmpResults);
+          }
 
-            // Go to resource types
-            var tmpResults = docs.map(toRes);
-
-            // Do we need to do a transform?
-            var rprom;
-            if (angular.isFunction(results.transform)) {
-              rprom = $q.when(results.transform(tmpResults));
-            } else {
-              rprom = $q.when(tmpResults);
-            }
-
-            return rprom.then(function(transformed) {
-              // Put the resources into the list
-              results.length = 0;
-              transformed.forEach(function(res) {
-                results.push(res);
-              });
-
-              results.$emitter.emit('update', results);
-
-              deferred.resolve(results);
+          return rprom.then(function(transformed) {
+            // Put the resources into the list
+            results.length = 0;
+            transformed.forEach(function(res) {
+              results.push(res);
             });
+
+            results.$emitter.emit('update', results);
+
+            return results;
           });
         });
 
-        return deferred.promise;
       }
 
       function refreshQuery(forceServer) {

@@ -4,7 +4,6 @@ import * as utils from './utils';
 import values from 'lodash.values';
 
 import angular from 'angular';
-import Datastore from 'nedb';
 
 var MAX_STORAGE_SIZE = 3 * 1024 * 1024; // 3MB - should fit without problems in any browser
 
@@ -14,6 +13,7 @@ export default function($q,
                         $window,
                         ServerResourceFactory,
                         QueryFactory,
+                        ResourceDBFactory,
                         $localForage) {
   'ngInject';
 
@@ -26,18 +26,7 @@ export default function($q,
 
   function LocalResourceFactory(url, rootKey, rootKeyPlural) {
 
-    // Is nedb available? If so get a local collection started
-    var db;
-    if (Datastore) {
-      db = new Datastore();
-
-      // Stick an index on __id - our id field.
-      db.ensureIndex({ fieldName: '__id' }, function (err) {
-        if (err) {
-          throw err;
-        }
-      });
-    }
+    var db = ResourceDBFactory();
 
     // Create the server resource and query
     var ServerResource = ServerResourceFactory(url, rootKey, rootKeyPlural);
@@ -61,12 +50,8 @@ export default function($q,
       return utils.toObject(this);
     }
 
-    function dbToRes(dbModel) {
-      return _internalRes[dbModel.__$id];
-    }
-
-    function dbToModel(dbModel) {
-      var loc = dbToRes(dbModel);
+    function idToModel(id) {
+      var loc = _internalRes[id];
       return loc.$mod;
     }
 
@@ -120,7 +105,7 @@ export default function($q,
     }
 
     function query(qry, limit, Resource) {
-      return QueryList(qry, limit, Resource, dbToModel);
+      return QueryList(qry, limit, Resource, idToModel);
     }
 
     function remove(skipServer) {
@@ -264,7 +249,7 @@ export default function($q,
 
     function performDbSync(res) {
       res.$dbresync = false;
-      return updateToDb(res).then(function() {
+      return db.update(res).then(function() {
         if (res.$dbresync) {
           return performDbSync(res);
         }
@@ -381,17 +366,12 @@ export default function($q,
 
       persistChange();
 
-      // If we have no db then exit
-      if (!db) {
-        return;
-      }
-
       if (res.$dbsync) {
         res.$dbresync = true;
       } else {
         var prom = performDbSync(res);
 
-        prom['finally'](function() {
+        prom.finally(function() {
           // Whatever happens remove the $sync promise and refresh all the queries
           delete res.$dbsync;
           res.$dbresync = false;
@@ -402,53 +382,6 @@ export default function($q,
       }
 
       return res.$dbsync;
-    }
-
-    function updateToDb(res) {
-
-      // We need to transform the resource by replacing the _id field (nedb uses its own id in that
-      // place). Instead call it __id
-      var doc = res.$toObject();
-      doc.__id = doc._id;
-      doc.__$id = res.$id;
-      delete doc._id;
-
-      var deferred = $q.defer();
-      if (!res.$dbid && !res.$deleted) {
-        db.insert(doc, function(err, newDoc) {
-          $rootScope.$apply(function() {
-            if (err) {
-              deferred.reject(err);
-              return;
-            }
-            res.$dbid = newDoc._id;
-            deferred.resolve();
-          });
-        });
-      } else if (res.$deleted) {
-        db.remove({_id: res.$dbid}, {multi: true}, function(err) {
-          $rootScope.$apply(function() {
-            if (err) {
-              deferred.reject(err);
-              return;
-            }
-
-            deferred.resolve();
-          });
-        });
-      } else {
-        db.update({_id: res.$dbid}, doc, {}, function(err) {
-          $rootScope.$apply(function() {
-            if (err) {
-              deferred.reject(err);
-              return;
-            }
-            deferred.resolve();
-          });
-        });
-      }
-
-      return deferred.promise;
     }
 
     function updateServer(val) {
