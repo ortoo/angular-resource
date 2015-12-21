@@ -17,7 +17,11 @@ var fileToBlob = through2.obj(function(file, enc, callback) {
   var contents = file.contents.toString();
 
   var escapedContents = JSON.stringify(contents);
-  var newContents = `module.exports = new Blob([${escapedContents}], {type: 'application/json'});`;
+
+  // Rename the require function as it may mess with other loaders further down the line
+  escapedContents = escapedContents.replace(/require/g, '__require');
+
+  var newContents = `'format cjs';\nmodule.exports = new Blob([${escapedContents}], {type: 'application/json'});`;
   file.contents = new Buffer(newContents);
   this.push(file);
   callback();
@@ -30,7 +34,7 @@ gulp.task('worker', function() {
     .bundle()
     .pipe(source('db-worker.js'))
     .pipe(buffer())
-    // .pipe(uglify())
+    .pipe(uglify())
     .pipe(fileToBlob)
     .pipe(gulp.dest('lib'));
 });

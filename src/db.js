@@ -1,5 +1,5 @@
 import worker from './db-worker.js';
-import uuid from './utils.js';
+import * as utils from './utils.js';
 import isObject from 'lodash.isobject';
 
 // These are the operators nedb supports
@@ -19,7 +19,7 @@ var simpleOperators = {
   '$not': true
 };
 
-var workerUrl = URL.createObjectUrl(worker);
+var workerUrl = URL.createObjectURL(worker);
 
 export default function($q, $rootScope) {
   'ngInject';
@@ -64,7 +64,7 @@ export default function($q, $rootScope) {
       var simple = true;
 
       if (Array.isArray(qry)) {
-        qry.forEach(function(val) {
+        qry.forEach((val) => {
           var kosher = this.qryIsSimple(val);
           if (!kosher) {
             simple = false;
@@ -97,7 +97,7 @@ export default function($q, $rootScope) {
 
     runWorkerFunction(fnName, ...args) {
       return $q((resolve, reject) => {
-        var id = uuid();
+        var id = utils.uuid();
         this.worker.postMessage({
           fnName: fnName,
           id: id,

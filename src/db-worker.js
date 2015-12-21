@@ -6,7 +6,7 @@ import Datastore from 'nedb';
 import clone from 'lodash.clone';
 import isObject from 'lodash.isobject';
 
-this.addEventListener('message', handleMessage);
+self.addEventListener('message', handleMessage);
 
 var db = new Datastore();
 
@@ -37,6 +37,7 @@ function update(doc, callback) {
   doc.__id = doc._id;
   doc.__$id = doc.$id;
   delete doc._id;
+  delete doc.$id;
   var dbid = RES_TO_DB_ID_MAP[doc.__$id];
   if (dbid) {
     db.update({_id: dbid}, doc, {}, function(err) {
@@ -49,6 +50,7 @@ function update(doc, callback) {
       }
 
       RES_TO_DB_ID_MAP[doc.__$id] = newDoc._id;
+      callback();
     });
   }
 }
@@ -75,7 +77,7 @@ function query(qry, callback) {
   cur.exec(function(err, docs) {
     // Now go from our docs to the ids
     var ids = docs.map(function(doc) {
-      doc.__$id;
+      return doc.__$id;
     });
     callback(err, ids);
   });
@@ -112,9 +114,12 @@ function createDbFind(qry) {
 
 function createCallback(id) {
   return function callback(err, resp) {
+    if (err) {
+      console.error(err);
+    }
     self.postMessage({
       id: id,
-      error: err,
+      error: err && err.message,
       data: resp
     });
   };
@@ -125,7 +130,7 @@ function handleMessage(event) {
   var id = data.id;
   var args = data.args;
   var cb = createCallback(id);
-  switch(event.fnName) {
+  switch(data.fnName) {
     case 'update':
       update(...args, cb);
       break;
@@ -136,7 +141,7 @@ function handleMessage(event) {
       query(...args, cb);
       break;
     default:
-      cb(new Error(`No such method ${event.fnName}`));
+      cb(new Error(`No such method ${data.fnName}`));
       break;
   }
 }
