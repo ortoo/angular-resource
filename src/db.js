@@ -21,7 +21,7 @@ var simpleOperators = {
 
 var workerUrl = URL.createObjectURL(worker);
 
-export default function($q, $rootScope) {
+export default function($q, $rootScope, $log) {
   'ngInject';
 
   class Database {
@@ -41,6 +41,12 @@ export default function($q, $rootScope) {
             cb(error, data);
           });
         }
+      });
+
+      this.worker.addEventListener('error', (err) => {
+        $rootScope.$apply(function() {
+          $log.error(err);
+        });
       });
     }
 
