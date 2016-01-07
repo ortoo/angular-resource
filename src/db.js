@@ -1,4 +1,5 @@
-import worker from './db-worker.js';
+// db-worker-string is automatically built
+import workerBlob from './db-worker-blob.js';
 import * as utils from './utils.js';
 import isObject from 'lodash.isobject';
 
@@ -19,112 +20,135 @@ var simpleOperators = {
   '$not': true
 };
 
-var workerUrl = URL.createObjectURL(worker);
+var workerUrl = URL.createObjectURL(workerBlob);
 
-export default function($q, $rootScope, $log) {
-  'ngInject';
+export default function() {
+  var fallbackWorkerFile;
+  this.setFallbackWorkerFile = function setFallbackWorkerFile(file) {
+    fallbackWorkerFile = file;
+  };
 
-  class Database {
-    constructor() {
-      // Kick off the web worker
-      this.worker = new Worker(workerUrl);
-      this.cbMaps = {};
+  this.$get = database;
 
-      this.worker.addEventListener('message', (event) => {
-        var data = event.data.data;
-        var error = event.data.error;
-        var id = event.data.id;
-        var cb = this.cbMaps[id];
+  function database($q, $rootScope, $log) {
+    'ngInject';
 
-        if (cb) {
-          $rootScope.$apply(function() {
-            cb(error, data);
-          });
-        }
-      });
-
-      this.worker.addEventListener('error', (err) => {
-        $rootScope.$apply(function() {
-          $log.error(err);
-        });
-      });
-    }
-
-    update(res) {
-      if (res.$deleted) {
-        return this.runWorkerFunction('remove', res.$id);
+    // Kick off the web worker
+    var worker;
+    try {
+      worker = new Worker(workerUrl);
+    } catch (err) {
+      if (fallbackWorkerFile) {
+        worker = new Worker(fallbackWorkerFile);
       } else {
-        var doc = res.$toObject();
-        // Stick on the internal id
-        doc.$id = res.$id;
-        return this.runWorkerFunction('update', doc);
+        throw err;
       }
     }
 
-    query(qry) {
-      return this.runWorkerFunction('query', qry);
-    }
+    worker.addEventListener('error', (err) => {
+      $rootScope.$apply(function() {
+        $log.error(err);
+      });
+    });
 
-    // Returns true if it is a simple query that we can process with nedb
-    qryIsSimple(qry) {
-      var simple = true;
+    class Database {
+      constructor() {
 
-      if (Array.isArray(qry)) {
-        qry.forEach((val) => {
-          var kosher = this.qryIsSimple(val);
-          if (!kosher) {
-            simple = false;
-            return false;
+        this.cbMaps = {};
+        this.dbid = utils.uuid();
+
+        worker.addEventListener('message', (event) => {
+
+          var data = event.data.data;
+          var error = event.data.error;
+          var id = event.data.id;
+          var cb = this.cbMaps[id];
+
+          if (cb) {
+            $rootScope.$apply(function() {
+              cb(error, data);
+            });
           }
         });
-      } else if (isObject(qry)) {
-        for (var key in qry) {
-          var val = qry[key];
-          // The key is fine if it doesn't begin with $ or is a simple operator
-          var kosherKey = (key[0] !== '$') || simpleOperators[key];
+      }
 
-          if (!kosherKey) {
-            simple = false;
-            break;
-          }
-
-          var valKosher = this.qryIsSimple(val);
-
-          if (!valKosher) {
-            simple = false;
-            break;
-          }
+      update(res) {
+        if (res.$deleted) {
+          return this.runWorkerFunction('remove', res.$id);
+        } else {
+          var doc = res.$toObject();
+          // Stick on the internal id
+          doc.$id = res.$id;
+          return this.runWorkerFunction('update', doc);
         }
       }
 
-      return simple;
-    }
+      query(qry) {
+        return this.runWorkerFunction('query', qry);
+      }
 
+      // Returns true if it is a simple query that we can process with nedb
+      qryIsSimple(qry) {
+        var simple = true;
 
-    runWorkerFunction(fnName, ...args) {
-      return $q((resolve, reject) => {
-        var id = utils.uuid();
-        this.worker.postMessage({
-          fnName: fnName,
-          id: id,
-          args: args
-        });
+        if (Array.isArray(qry)) {
+          qry.forEach((val) => {
+            var kosher = this.qryIsSimple(val);
+            if (!kosher) {
+              simple = false;
+              return false;
+            }
+          });
+        } else if (isObject(qry)) {
+          for (var key in qry) {
+            var val = qry[key];
+            // The key is fine if it doesn't begin with $ or is a simple operator
+            var kosherKey = (key[0] !== '$') || simpleOperators[key];
 
-        this.cbMaps[id] = (err, resp) => {
-          delete this.cbMaps[id];
-          if (err) {
-            reject(err);
-          } else {
-            resolve(resp);
+            if (!kosherKey) {
+              simple = false;
+              break;
+            }
+
+            var valKosher = this.qryIsSimple(val);
+
+            if (!valKosher) {
+              simple = false;
+              break;
+            }
           }
-        };
-      });
+        }
+
+        return simple;
+      }
+
+
+      runWorkerFunction(fnName, ...args) {
+        return $q((resolve, reject) => {
+          var id = utils.uuid();
+          worker.postMessage({
+            fnName: fnName,
+            id: id,
+            dbid: this.dbid,
+            args: args
+          });
+
+          this.cbMaps[id] = (err, resp) => {
+            delete this.cbMaps[id];
+            if (err) {
+              reject(err);
+            } else {
+              resolve(resp);
+            }
+          };
+        });
+      }
     }
-  }
 
-  function DBFactory() {
-    return new Database();
-  }
+    function DBFactory() {
+      return new Database();
+    }
 
-  return DBFactory;
+    return DBFactory;
+  }
 }

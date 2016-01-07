@@ -1,7 +1,8 @@
 import events from 'events';
 import * as utils from './utils';
 
-export default function() {
+export default function(ResourceDBFactoryProvider) {
+  'ngInject';
 
   // The length of time since an object has been requested that we keep in persistent storage.
   // In milliseconds - default to 7 days
@@ -11,6 +12,8 @@ export default function() {
   this.setPStorageMaxLen = function setPStorageMaxLen(len) {
     pStorageMaxLen = len * 24 * 60 * 60 * 1000;
   };
+
+  this.setFallbackWorkerFile = ResourceDBFactoryProvider.setFallbackWorkerFile;
 
   this.$get = ResourceFactoryFactory;
 

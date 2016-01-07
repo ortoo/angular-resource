@@ -21,7 +21,7 @@ var fileToBlob = through2.obj(function(file, enc, callback) {
   // Rename the require function as it may mess with other loaders further down the line
   escapedContents = escapedContents.replace(/require/g, '__require');
 
-  var newContents = `'format cjs';\nmodule.exports = new Blob([${escapedContents}], {type: 'application/json'});`;
+  var newContents = `'format cjs';\nmodule.exports = new Blob([${escapedContents}], {type: 'text/javascript'});`;
   file.contents = new Buffer(newContents);
   this.push(file);
   callback();
@@ -32,7 +32,7 @@ gulp.task('worker', function() {
     entries: 'src/db-worker.js'
   }).transform(babelify, {presets: ['es2015']})
     .bundle()
-    .pipe(source('db-worker.js'))
+    .pipe(source('db-worker-blob.js'))
     .pipe(buffer())
     .pipe(uglify())
     .pipe(fileToBlob)
@@ -40,7 +40,7 @@ gulp.task('worker', function() {
 });
 
 gulp.task('js', function() {
-  return gulp.src(['src/**/*.js', '!src/db-worker.js'])
+  return gulp.src(['src/**/*.js'])
     .pipe(sourcemaps.init())
       .pipe(babel())
       .pipe(ngAnnotate({

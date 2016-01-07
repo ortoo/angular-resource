@@ -8,79 +8,85 @@ import isObject from 'lodash.isobject';
 
 self.addEventListener('message', handleMessage);
 
-var db = new Datastore();
+var _DB_MAP = {};
 
-var RES_TO_DB_ID_MAP = {};
+class Database {
+  constructor() {
+    this.db = new Datastore();
 
-// Stick an index on __id - our id field.
-db.ensureIndex({ fieldName: '__id' }, function (err) {
-  if (err) {
-    throw err;
-  }
-});
+    this.RES_TO_DB_ID_MAP = {};
 
-function remove(id, callback) {
-  var dbid = RES_TO_DB_ID_MAP[id];
-  if (dbid) {
-    delete RES_TO_DB_ID_MAP[id];
-    db.remove({_id: dbid}, {multi: true}, function(err) {
-      callback(err);
-    });
-  } else {
-    callback(new Error(`No object to remove with id ${id}`));
-  }
-}
-
-function update(doc, callback) {
-  // We need to transform the resource by replacing the _id field (nedb uses its own id in that
-  // place). Instead call it __id
-  doc.__id = doc._id;
-  doc.__$id = doc.$id;
-  delete doc._id;
-  delete doc.$id;
-  var dbid = RES_TO_DB_ID_MAP[doc.__$id];
-  if (dbid) {
-    db.update({_id: dbid}, doc, {}, function(err) {
-      callback(err);
-    });
-  } else {
-    db.insert(doc, function(err, newDoc) {
+    // Stick an index on __id - our id field.
+    this.db.ensureIndex({ fieldName: '__id' }, function (err) {
       if (err) {
-        return callback(err);
+        throw err;
       }
-
-      RES_TO_DB_ID_MAP[doc.__$id] = newDoc._id;
-      callback();
     });
   }
-}
 
-function query(qry, callback) {
-  var find = createDbFind(qry.find);
-  var limit = qry.limit;
-  var skip = qry.skip;
-  var sort = qry.sort;
-
-  var cur = db.find(find);
-
-  if (sort) {
-    cur = cur.sort(sort);
-  }
-  if (skip) {
-    cur = cur.skip(skip);
-  }
-  if (limit) {
-    // We go + 1 so we can tell if there are any more results
-    cur = cur.limit(limit + 1);
+  remove(id, callback) {
+    var dbid = this.RES_TO_DB_ID_MAP[id];
+    if (dbid) {
+      delete this.RES_TO_DB_ID_MAP[id];
+      this.db.remove({_id: dbid}, {multi: true}, function(err) {
+        callback(err);
+      });
+    } else {
+      callback(new Error(`No object to remove with id ${id}`));
+    }
   }
 
-  cur.exec(function(err, docs) {
-    // Now go from our docs to the ids
-    var ids = docs.map(function(doc) {
-      return doc.__$id;
+  update(doc, callback) {
+    // We need to transform the resource by replacing the _id field (nedb uses its own id in that
+    // place). Instead call it __id
+    doc.__id = doc._id;
+    doc.__$id = doc.$id;
+    delete doc._id;
+    delete doc.$id;
+    var dbid = this.RES_TO_DB_ID_MAP[doc.__$id];
+    if (dbid) {
+      this.db.update({_id: dbid}, doc, {}, function(err) {
+        callback(err);
+      });
+    } else {
+      this.db.insert(doc, (err, newDoc) => {
+        if (err) {
+          return callback(err);
+        }
+
+        this.RES_TO_DB_ID_MAP[doc.__$id] = newDoc._id;
+        callback();
+      });
+    }
+  }
+
+  query(qry, callback) {
+    var find = createDbFind(qry.find);
+    var limit = qry.limit;
+    var skip = qry.skip;
+    var sort = qry.sort;
+
+    var cur = this.db.find(find);
+
+    if (sort) {
+      cur = cur.sort(sort);
+    }
+    if (skip) {
+      cur = cur.skip(skip);
+    }
+    if (limit) {
+      // We go + 1 so we can tell if there are any more results
+      cur = cur.limit(limit + 1);
+    }
+
+    cur.exec(function(err, docs) {
+      // Now go from our docs to the ids
+      var ids = docs.map(function(doc) {
+        return doc.__$id;
+      });
+      callback(err, ids);
     });
-    callback(err, ids);
-  });
+  }
 }
 
 // Convert any _id searches to __id (which is where our id moved to)
@@ -114,9 +120,6 @@ function createDbFind(qry) {
 
 function createCallback(id) {
   return function callback(err, resp) {
-    if (err) {
-      console.error(err);
-    }
     self.postMessage({
       id: id,
       error: err && err.message,
@@ -125,20 +128,34 @@ function createCallback(id) {
   };
 }
 
+function getDatabase(dbid) {
+  var db = _DB_MAP[dbid];
+
+  if (!db) {
+    db = new Database();
+    _DB_MAP[dbid] = db;
+  }
+
+  return db;
+}
+
 function handleMessage(event) {
   var data = event.data;
+  var dbid = data.dbid;
   var id = data.id;
   var args = data.args;
   var cb = createCallback(id);
+  var db = getDatabase(dbid);
+
   switch(data.fnName) {
     case 'update':
-      update(...args, cb);
+      db.update(...args, cb);
       break;
     case 'remove':
-      remove(...args, cb);
+      db.remove(...args, cb);
       break;
     case 'query':
-      query(...args, cb);
+      db.query(...args, cb);
       break;
     default:
       cb(new Error(`No such method ${data.fnName}`));

@@ -15,5 +15,5 @@ export default angular.module('or2.resource', ['LocalForageModule'])
   .factory('LocalResourceFactory', LocalResourceFactory)
   .factory('ServerResourceFactory', ServerResourceFactory)
   .factory('QueryFactory', QueryFactory)
-  .factory('ResourceDBFactory', ResourceDBFactory)
+  .provider('ResourceDBFactory', ResourceDBFactory)
   .provider('resource', ResourceProvider);
