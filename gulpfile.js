@@ -9,7 +9,7 @@ var uglify = require('gulp-uglify');
 var babelify = require('babelify');
 var through2 = require('through2');
 
-var fileToBlob = through2.obj(function(file, enc, callback) {
+var fileToString = through2.obj(function(file, enc, callback) {
   if (file.isNull()) {
     return callback();
   }
@@ -21,7 +21,7 @@ var fileToBlob = through2.obj(function(file, enc, callback) {
   // Rename the require function as it may mess with other loaders further down the line
   escapedContents = escapedContents.replace(/require/g, '__require');
 
-  var newContents = `'format cjs';\nmodule.exports = new Blob([${escapedContents}], {type: 'text/javascript'});`;
+  var newContents = `'format cjs';\nmodule.exports = ${escapedContents};`;
   file.contents = new Buffer(newContents);
   this.push(file);
   callback();
@@ -32,10 +32,10 @@ gulp.task('worker', function() {
     entries: 'src/db-worker.js'
   }).transform(babelify, {presets: ['es2015']})
     .bundle()
-    .pipe(source('db-worker-blob.js'))
+    .pipe(source('db-worker-string.js'))
     .pipe(buffer())
     .pipe(uglify())
-    .pipe(fileToBlob)
+    .pipe(fileToString)
     .pipe(gulp.dest('lib'));
 });
 

@@ -1,5 +1,5 @@
 // db-worker-string is automatically built
-import workerBlob from './db-worker-blob.js';
+import workerString from './db-worker-string.js';
 import * as utils from './utils.js';
 import isObject from 'lodash.isobject';
 
@@ -20,7 +20,15 @@ var simpleOperators = {
   '$not': true
 };
 
-var workerUrl = URL.createObjectURL(workerBlob);
+// We may not have the ability to create blobs, but we may be able to use a fallback to an
+// actual file anyway.
+var workerBlobUrl;
+var workerBlob;
+try {
+  workerBlob = new Blob([workerString], {type: 'text/javascript'});
+  workerBlobUrl = URL.createObjectURL(workerBlob);
+} catch (err) {} //eslint-disable-line no-empty
+
 
 export default function() {
   var fallbackWorkerFile;
@@ -36,7 +44,11 @@ export default function() {
     // Kick off the web worker
     var worker;
     try {
-      worker = new Worker(workerUrl);
+      if (!workerBlobUrl) {
+        throw new Error('No Blob URL available for DB worker');
+      }
+
+      worker = new Worker(workerBlobUrl);
     } catch (err) {
       if (fallbackWorkerFile) {
         worker = new Worker(fallbackWorkerFile);
