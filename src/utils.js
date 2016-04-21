@@ -94,9 +94,7 @@ export function mergeObjects(mine, old, yours) {
 export function forEachVal(res, cb) {
   for (var key in res) {
     if (!hiddenKeyRegex.test(key)) {
-      if (!cb(res, key)) {
-        break;
-      }
+      cb(res, key);
     }
   }
 }
