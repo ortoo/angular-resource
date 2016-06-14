@@ -1,7 +1,9 @@
+import EventEmitter from 'events';
+
 var ArrayProto = Array.prototype;
 
 // Make the standard ES5 array transformations work as expected...
-export function apply(qry, $q) {
+export function apply(qry) {
 
   // These methods create new arrays
   ['filter', 'map', 'slice'].forEach(newArrayTransform);
@@ -12,6 +14,7 @@ export function apply(qry, $q) {
 
   function inPlaceTransform(name) {
     qry[name] = function() {
+      var qry = this;
       var transformArgs = arguments;
       qry.$emitter.on('update', function() {
         ArrayProto[name].apply(qry, transformArgs);
@@ -23,14 +26,16 @@ export function apply(qry, $q) {
   }
 
   function newArrayTransform(name) {
-    qry[name] = function() {
-      var newArr = [];
-      var transformArgs = arguments;
+    qry[name] = function(...args) {
+      var qry = this;
+      var newArr = ArrayEmitter();
+      newArr.$emitter = new EventEmitter();
       qry.$emitter.on('update', function() {
-        updateNewArr(ArrayProto[name].apply(qry, transformArgs));
+        updateNewArr(ArrayProto[name].apply(qry, args));
+        newArr.$emitter.emit('update', newArr);
       });
 
-      updateNewArr(ArrayProto[name].apply(qry, transformArgs));
+      updateNewArr(ArrayProto[name].apply(qry, args));
 
       function updateNewArr(arr) {
         newArr.length = 0;
@@ -44,31 +49,19 @@ export function apply(qry, $q) {
   }
 
   function concat(...args) {
-    var newArr = [];
-    var qries = args.filter((obj) => (Array.isArray(obj) && obj.$emitter));
-    qries.push(qry);
+    var qry = this;
+    var newArr = ArrayEmitter();
+    var qries = [qry, ...args].filter((obj) => (Array.isArray(obj) && obj.$emitter));
     qries.forEach((_qry) => {
-      _qry.$emitter.on('update', updateConcat);
+      _qry.$emitter.on('update', function() {
+        updateConcat();
+        newArr.$emitter.emit('update', newArr);
+      });
     });
 
     updateConcat();
 
-    // Setup the next, prev etc
-    ['hasNext', 'hasPrev'].forEach(function(key) {
-      Object.defineProperty(newArr, key, {
-        get: function() {
-          return qries.some((_qry) => _qry[key]);
-        }
-      });
-    });
-
-    ['next', 'prev'].forEach(function(key) {
-      newArr[key] = function(...args) {
-        return $q.all(qries.map((_qry) => _qry[key](...args))).then(function() {
-          return newArr;
-        });
-      };
-    });
+    return newArr;
 
     function updateConcat() {
       var concatted = qry.concat(...args);
@@ -76,4 +69,18 @@ export function apply(qry, $q) {
       newArr.push(...concatted);
     }
   }
+}
+
+function ArrayEmitter() {
+  var arr = [];
+  arr.$emitter = new EventEmitter();
+
+  ['on', 'once', 'addListener', 'removeListener'].forEach(function(key) {
+    arr[key] = arr.$emitter[key].bind(arr.$emitter);
+  });
+
+  // Stick on the various methods
+  apply(arr);
+
+  return arr;
 }
