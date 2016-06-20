@@ -1,6 +1,6 @@
 {
   "name": "@ortoo/angular-resource",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "description": "Magical CRUD resource management for angular",
   "main": "lib/index.js",
   "scripts": {
