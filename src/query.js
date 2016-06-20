@@ -1,4 +1,3 @@
-import events from 'events';
 import clone from 'lodash.clone';
 import isEmpty from 'lodash.isempty';
 import values from 'lodash.values';
@@ -9,7 +8,7 @@ import union from 'lodash.union';
 import without from 'lodash.without';
 import angular from 'angular';
 
-import * as queryTransforms from './query-transforms';
+import ArrayEmitter from './array-emitter.js';
 
 function normalizeQuery(qry) {
   if (!qry) {
@@ -121,7 +120,7 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       // someone else creates or removes something that should go in these results
       var serverResults = ServerQueryList(qry, limit, Resource);
 
-      var results = [];
+      var results = new ArrayEmitter();
       _localQueries.push(results);
       var currentLimit = 0;
       var currentSkip = 0;
@@ -342,20 +341,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
         return promise;
       }
 
-      // Event emitter 'inheritance'
-      var emitter = new events.EventEmitter();
-      var eeprops = [
-        'addListener',
-        'on',
-        'once',
-        'removeListener'
-      ];
-      eeprops.forEach(function(prop) {
-        results[prop] = function() {
-          return emitter[prop].apply(emitter, arguments);
-        };
-      });
-
       results.$refresh = refreshQuery;
       results.extend = extendResults;
       results.replace = replace;
@@ -365,9 +350,7 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       results.$promise = refreshQuery();
       results.chain = chain;
       results.$Model = Resource;
-      results.$emitter = emitter;
       results.$serverResults = serverResults;
-      queryTransforms.apply(results);
 
       return results;
     }
@@ -406,7 +389,7 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       });
 
       var emitPromise = null;
-      var results = [];
+      var results = new ArrayEmitter();
       var currentLimit = 0;
       var currentSkip = 0;
       var lastBatchSize = 0;
@@ -669,10 +652,7 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       results.$resolved = false;
       results.chain = chain;
       results.$Model = Resource;
-      results.$emitter = new events.EventEmitter();
       results.$skip = 0;
-
-      queryTransforms.apply(results);
 
       return results;
     }
