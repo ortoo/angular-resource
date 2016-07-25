@@ -71,7 +71,8 @@ function ArrayEmitter(...args) {
     enumerable: false,
     value: function(...args) {
       var newArr = new ArrayEmitter();
-      var qries = [this, ...args].filter((obj) => (Array.isArray(obj) && obj.$emitter));
+      var allArrs = [this, ...args];
+      var qries = allArrs.filter((obj) => (Array.isArray(obj) && obj.$emitter));
       qries.forEach((_qry) => {
         _qry.$emitter.on('update', () => {
           updateConcat();
@@ -84,7 +85,7 @@ function ArrayEmitter(...args) {
       return newArr;
 
       function updateConcat() {
-        var concatted = ArrayProto.concat.call(...qries);
+        var concatted = ArrayProto.concat.call(...allArrs);
         newArr.length = 0;
         newArr.push(...concatted);
       }
