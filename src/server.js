@@ -1,6 +1,5 @@
 import events from 'events';
 
-import keys from 'lodash.keys';
 import uniq from 'lodash.uniq';
 
 import angular from 'angular';
@@ -18,30 +17,8 @@ export default function($q, $injector) {
     var _resources = {};
     var _internalRes = {};
 
-    // If the socket resets or connects then refetch everything
-    sock.on('reset', function() {
-      refreshResources();
-    });
-    sock.on('connected', function() {
-      refreshResources();
-    });
-
-    // Listen for modified gets
-    sock.on('modified get', function(id) {
-      if (id) {
-        var res = _resources[id];
-        if (res) {
-          res.$refresh();
-        }
-      }
-    });
-
     function toObject() {
       return utils.toObject(this);
-    }
-
-    function refreshResources() {
-      ServerResource.get(keys(_resources), true);
     }
 
     // Returns the object or a list of objects (depending on ids passed in)

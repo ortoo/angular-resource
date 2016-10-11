@@ -4,6 +4,8 @@ import * as utils from './utils';
 export default function(ResourceDBFactoryProvider) {
   'ngInject';
 
+  var PLUGINS = [];
+
   // The length of time since an object has been requested that we keep in persistent storage.
   // In milliseconds - default to 7 days
   var pStorageMaxLen = 7 * 24 * 60 * 60 * 1000;
@@ -14,18 +16,26 @@ export default function(ResourceDBFactoryProvider) {
   };
 
   this.setFallbackWorkerFile = ResourceDBFactoryProvider.setFallbackWorkerFile;
-
+  this.plugin = plugin;
   this.$get = ResourceFactoryFactory;
+
+  function plugin(plugin) {
+    PLUGINS.push(plugin);
+  }
 
   function ResourceFactoryFactory($window,
                                   $q,
                                   $rootScope,
                                   $timeout,
                                   $localForage,
+                                  $injector,
                                   LocalResourceFactory,
                                   Chain,
                                   Collection) {
     'ngInject';
+
+    ResourceFactory.Chain = Chain;
+    return ResourceFactory;
 
     function ResourceFactory(url, rootKey, rootKeyPlural) {
       rootKeyPlural = rootKeyPlural || (rootKey + 's');
@@ -72,7 +82,7 @@ export default function(ResourceDBFactoryProvider) {
         }
 
         if (id) {
-          _resources[id] = res;
+          addedResource(id, res);
         }
 
         return res;
@@ -118,7 +128,7 @@ export default function(ResourceDBFactoryProvider) {
         }
         this.$deleted = true;
         if (this._id) {
-          delete _resources[this._id];
+          removedResource(this._id, this);
         }
 
         var prom;
@@ -157,6 +167,22 @@ export default function(ResourceDBFactoryProvider) {
         return results;
       }
 
+      function addedResource(id, res) {
+        var existing = _resources[id];
+        _resources[id] = res;
+        if (!existing) {
+          emitter.emit('created', id, res);
+        }
+      }
+
+      function removedResource(id, res) {
+        var existing = _resources[id];
+        delete _resources[id];
+        if (existing) {
+          emitter.emit('deleted', id, res);
+        }
+      }
+
       function updatedLocal(res, newVal, oldVal) {
 
         // We could have been deleted (existing oldVal, null newval)
@@ -181,7 +207,7 @@ export default function(ResourceDBFactoryProvider) {
           utils.setResValues(res, merge);
 
           // Make sure we are stored
-          _resources[res._id] = res;
+          addedResource(res._id, res);
         }
       }
 
@@ -268,7 +294,7 @@ export default function(ResourceDBFactoryProvider) {
 
         // If we have an id then add us to the store
         if (this._id) {
-          _resources[this._id] = this;
+          addedResource(this._id, this);
         }
 
         // Listen for changes on the local resource
@@ -285,18 +311,7 @@ export default function(ResourceDBFactoryProvider) {
       Resource.collect = collection;
       Resource.updateOrCreate = updateOrCreate;
 
-      // Event emitter 'inheritance'
-      var eeprops = [
-        'addListener',
-        'on',
-        'once',
-        'removeListener'
-      ];
-      eeprops.forEach(function(prop) {
-        Resource[prop] = function() {
-          return emitter[prop].apply(emitter, arguments);
-        };
-      });
+      inheritEventEmitter(Resource, emitter);
 
       Resource.prototype.$save = save;
       Resource.prototype.$remove = remove;
@@ -307,11 +322,31 @@ export default function(ResourceDBFactoryProvider) {
       Resource.prototype.$toObject = toObject;
       Resource.prototype.$updateServer = updateServer;
 
+      // Trigger any plugins
+      for (let plugin of PLUGINS) {
+        $injector.invoke(plugin, null, {
+          Resource: Resource,
+          model: rootKey
+        });
+      }
+
       return Resource;
     }
-
-    ResourceFactory.Chain = Chain;
-
-    return ResourceFactory;
   }
+}
+
+function inheritEventEmitter(obj, emitter) {
+  var eeprops = [
+    'addListener',
+    'on',
+    'once',
+    'removeListener'
+  ];
+
+  // Event emitter 'inheritance'
+  eeprops.forEach(function(prop) {
+    obj[prop] = function() {
+      return emitter[prop].apply(emitter, arguments);
+    };
+  });
 }

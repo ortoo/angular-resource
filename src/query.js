@@ -1,11 +1,7 @@
 import clone from 'lodash.clone';
 import isEmpty from 'lodash.isempty';
-import values from 'lodash.values';
-import flatten from 'lodash.flatten';
-import uniq from 'lodash.uniq';
 import pluck from 'lodash.pluck';
 import union from 'lodash.union';
-import without from 'lodash.without';
 import angular from 'angular';
 
 import ArrayEmitter from './array-emitter.js';
@@ -67,33 +63,7 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
     var sock = socket(url, rootKey, rootKeyPlural);
 
     // Object holding queries (keys are the query ids, values are arrays of arrays)
-    var _serverQueries = {};
     var _localQueries = [];
-
-    // If the socket resets or connects then refetch everything
-    sock.on('reset', function() {
-      refreshQueries();
-    });
-    sock.on('connected', function() {
-      refreshQueries();
-    });
-
-    // Listen for modified queries
-    sock.on('modified query', function(qryId, data) {
-      var qrys = _serverQueries[qryId];
-      if (qrys) {
-        qrys.forEach(function(qry) {
-          qry.$newData(qryId, data);
-        });
-      }
-    });
-
-    function refreshQueries() {
-      var resultsSet = uniq(flatten(values(_serverQueries), true));
-      resultsSet.forEach(function(results) {
-        results.$refresh();
-      });
-    }
 
     /**
      * Local Query List
@@ -399,7 +369,7 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       results.loading = true;
 
 
-      function query(data, replaces) {
+      function query(data) {
         // We only want to do one emit at a time (otherwise we could get into a bad state)
         if (angular.isFunction(data)) {
           data = data();
@@ -413,10 +383,10 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
           var promise;
           if (emitPromise) {
             promise = emitPromise.then(function() {
-              return sock.query(data, replaces);
+              return sock.query(data);
             });
           } else {
-            emitPromise = promise = sock.query(data, replaces);
+            emitPromise = promise = sock.query(data);
           }
 
           return promise;
@@ -431,8 +401,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
         var deferred = $q.defer();
         var ids = response.ids;
         var pagingOpts = response.pagingOpts;
-
-        maybeNewQryId(_qryId);
 
         // So far we've only got the ids of the qry result - go and fetch the actual objects.
         // This mechanism saves bandwidth by only getting the object data once then listening
@@ -491,33 +459,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
         });
 
         return deferred.promise;
-      }
-
-      function maybeNewQryId(_qryId) {
-        if (qryId !== _qryId) {
-
-          var qryList;
-          if (qryId) {
-            // Update the qrylist (do we want to delete the old one?)
-            qryList = _serverQueries[qryId] = without(_serverQueries[qryId], results);
-            // If there are no members left in the query list then delete it
-            if (qryList.length === 0) {
-              delete _serverQueries[qryId];
-            }
-          }
-
-          // Move the results to the new list
-          qryId = _qryId;
-          qryList = _serverQueries[qryId];
-          if (!qryList) {
-            qryList = _serverQueries[qryId] = [];
-          }
-
-          // Put the results into the new query list
-          if (!~qryList.indexOf(results)) {
-            qryList.push(results);
-          }
-        }
       }
 
       function refreshQuery(force) {
