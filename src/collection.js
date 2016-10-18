@@ -78,6 +78,10 @@ export default function($q, $rootScope, Chain) {
     function collectRecursiveByQuery(start) {
       var unseen = start.filter(model => !~nodes.indexOf(model));
 
+      if (unseen.length === 0) {
+        return $q.resolve();
+      }
+
       for (let model of unseen) {
         nodes.push(model);
       }
