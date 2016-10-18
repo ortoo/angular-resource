@@ -196,12 +196,13 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
 
           return rprom.then(function(transformed) {
             // Put the resources into the list
+            var old = results.slice();
             results.length = 0;
             transformed.forEach(function(res) {
               results.push(res);
             });
 
-            results.$emitter.emit('update', results);
+            results.$emitter.emit('update', results, old);
 
             return results;
           });
@@ -363,7 +364,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       var currentLimit = 0;
       var currentSkip = 0;
       var lastBatchSize = 0;
-      var qryId = null;
       var _pagingOpts = {};
 
       results.loading = true;
@@ -493,7 +493,7 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
           return qry.then(function(oldqry) {
             if (JSON.stringify(oldqry) !== JSON.stringify(normQry)) {
               // query is different - continue
-              var req = query(normQry, qryId);
+              var req = query(normQry);
 
               var promise = req.then(function(res) {
                 // If we get no response (the app could be offline) then just resolve with

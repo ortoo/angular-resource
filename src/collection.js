@@ -1,13 +1,14 @@
-import events from 'events';
-import * as queryTransforms from './query-transforms';
+import ArrayEmitter from './array-emitter';
+import isFunction from 'lodash.isfunction';
+import isEqual from 'lodash.isequal';
 
 // Recursively follows a property that links to the same model.
 // For now rather obtusively just redraw from the seeds when anything changes.
 export default function($q, $rootScope, Chain) {
   'ngInject';
 
-  function Collection(Resource, seeds, relation) {
-    var nodes = [];
+  function Collection(Resource, seeds, relationOrQuery) {
+    var nodes = new ArrayEmitter();
     var watches = [];
     var collecting = false;
     var recollect = false;
@@ -16,9 +17,7 @@ export default function($q, $rootScope, Chain) {
 
     nodes.$promise = deferred.promise;
     nodes.$resolved = false;
-    nodes.$emitter = new events.EventEmitter();
     nodes.chain = chain;
-    queryTransforms.apply(nodes);
 
     function chain(Model, qryFn) {
       return Chain(nodes, Model, qryFn);
@@ -33,7 +32,7 @@ export default function($q, $rootScope, Chain) {
     }
 
     function watchChanged(newVal, oldVal) {
-      if (oldVal !== newVal) {
+      if (!isEqual(oldVal, newVal)) {
         runCollection();
       }
     }
@@ -65,7 +64,40 @@ export default function($q, $rootScope, Chain) {
     }
 
     function collectRecursive(start) {
+      if (!Array.isArray(start)) {
+        start = [start];
+      }
+
+      if (isFunction(relationOrQuery)) {
+        return collectRecursiveByQuery(start);
+      } else {
+        return collectRecursiveByProp(start);
+      }
+    }
+
+    function collectRecursiveByQuery(start) {
+      var unseen = start.filter(model => !~nodes.indexOf(model));
+
+      for (let model of unseen) {
+        nodes.push(model);
+      }
+
+      return $q.resolve(relationOrQuery(unseen)).then(function(qry) {
+        return Resource.query(qry).$promise.then(function(results) {
+          // Listen for changes
+          results.on('update', watchChanged);
+          watches.push(function() {
+            results.removeListener('update', watchChanged);
+          });
+
+          return collectRecursiveByQuery(results);
+        });
+      });
+    }
+
+    function collectRecursiveByProp(start) {
       var proms = [];
+      var relation = relationOrQuery;
       start.forEach(function(model) {
         var deps = model[relation];
 
@@ -83,7 +115,7 @@ export default function($q, $rootScope, Chain) {
           if (deps && deps.length > 0) {
             var prom = Resource.get(deps).$promise;
             prom = prom.then(function(next) {
-              return collectRecursive(next);
+              return collectRecursiveByProp(next);
             });
             proms.push(prom);
           }
