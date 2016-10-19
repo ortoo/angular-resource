@@ -1,13 +1,17 @@
 import ArrayEmitter from './array-emitter';
-import isFunction from 'lodash.isfunction';
 import isEqual from 'lodash.isequal';
+
+import angular from 'angular';
+
+const isFunction = angular.isFunction;
+const isString = angular.isString;
 
 // Recursively follows a property that links to the same model.
 // For now rather obtusively just redraw from the seeds when anything changes.
 export default function($q, $rootScope, Chain) {
   'ngInject';
 
-  function Collection(Resource, seeds, relationOrQuery) {
+  function Collection(Resource, seeds, searcher) {
     var nodes = new ArrayEmitter();
     var watches = [];
     var collecting = false;
@@ -18,6 +22,10 @@ export default function($q, $rootScope, Chain) {
     nodes.$promise = deferred.promise;
     nodes.$resolved = false;
     nodes.chain = chain;
+
+    if (!isFunction(searcher)) {
+      searcher = propSearcher(searcher);
+    }
 
     function chain(Model, qryFn) {
       return Chain(nodes, Model, qryFn);
@@ -68,14 +76,6 @@ export default function($q, $rootScope, Chain) {
         start = [start];
       }
 
-      if (isFunction(relationOrQuery)) {
-        return collectRecursiveByQuery(start);
-      } else {
-        return collectRecursiveByProp(start);
-      }
-    }
-
-    function collectRecursiveByQuery(start) {
       var unseen = start.filter(model => !~nodes.indexOf(model));
 
       if (unseen.length === 0) {
@@ -86,47 +86,41 @@ export default function($q, $rootScope, Chain) {
         nodes.push(model);
       }
 
-      return $q.resolve(relationOrQuery(unseen)).then(function(qry) {
-        return Resource.query(qry).$promise.then(function(results) {
-          // Listen for changes
+      var origSearcherRes = searcher(unseen);
+
+      return $q.resolve(origSearcherRes).then(function(result) {
+        // Result could either be an array of ids, or the objects themselves
+        if (result && isString(result[0])) {
+          // Ids
+          return Resource.get(result).$promise;
+        } else {
+          return $q.resolve(result);
+        }
+      }).then(function(results) {
+        // If our result array is an event emitter then we listen on the update event,
+        // if it's been produced synchronously then put a watch on.
+        if (isFunction(results.on)) {
           results.on('update', watchChanged);
           watches.push(function() {
             results.removeListener('update', watchChanged);
           });
+        } else if (Array.isArray(origSearcherRes)) {
+          var dereg = $rootScope.$watchCollection(function() {
+            return searcher(unseen);
+          }, watchChanged);
+          watches.push(dereg);
+        }
 
-          return collectRecursiveByQuery(results);
-        });
+        return collectRecursive(results);
       });
     }
 
-    function collectRecursiveByProp(start) {
-      var proms = [];
-      var relation = relationOrQuery;
-      start.forEach(function(model) {
-        var deps = model[relation];
-
-        // Don't do anything if we have seen this before
-        if (!~nodes.indexOf(model)) {
-
-          // Push this node, and watch it for changes
-          nodes.push(model);
-          var dereg = $rootScope.$watch(function() {
-            return model[relation];
-          }, watchChanged);
-          watches.push(dereg);
-
-          // If there are dependecies then go and fetch them
-          if (deps && deps.length > 0) {
-            var prom = Resource.get(deps).$promise;
-            prom = prom.then(function(next) {
-              return collectRecursiveByProp(next);
-            });
-            proms.push(prom);
-          }
-        }
-      });
-
-      return $q.all(proms);
+    function propSearcher(prop) {
+      return function searcher(models) {
+        return models.reduce(function (arr, model) {
+          return arr.concat(model[prop] || []);
+        }, []);
+      };
     }
 
     // Watch the seeds for changes

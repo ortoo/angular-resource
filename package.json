@@ -45,7 +45,6 @@
     "lodash.clone": "^3.0.3",
     "lodash.isempty": "^3.0.4",
     "lodash.isequal": "^4.4.0",
-    "lodash.isfunction": "^3.0.8",
     "lodash.isobject": "^3.0.2",
     "lodash.pluck": "^3.1.2",
     "lodash.union": "^3.1.0",
