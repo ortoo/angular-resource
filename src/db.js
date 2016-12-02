@@ -2,6 +2,8 @@
 import workerString from './db-worker-string.js';
 import * as utils from './utils.js';
 import isObject from 'lodash.isobject';
+import isString from 'lodash.isstring';
+import isFunction from 'lodash.isfunction';
 
 // These are the operators nedb supports
 var simpleOperators = {
@@ -50,8 +52,11 @@ export default function() {
 
       worker = new Worker(workerBlobUrl);
     } catch (err) {
-      if (fallbackWorkerFile) {
+      if (isString(fallbackWorkerFile)) {
         worker = new Worker(fallbackWorkerFile);
+      } else if (isFunction(fallbackWorkerFile)) {
+        // handle being given a constructor directly (e.g. from the webpack worker-loader)
+        worker = new fallbackWorkerFile();
       } else {
         throw err;
       }
