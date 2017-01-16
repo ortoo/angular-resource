@@ -1,4 +1,5 @@
 import EventEmitter from 'events';
+import isUndefined from 'lodash.isundefined';
 
 var ArrayProto = Array.prototype;
 
@@ -34,7 +35,7 @@ function ArrayEmitter(...args) {
       enumerable: false,
       value: function(...args) {
         var _emitter = this.$emitter;
-        _emitter.setMaxListeners(_emitter.getMaxListeners() + 1);
+        _emitter.setMaxListeners(getMaxListeners(_emitter) + 1);
         _emitter.on('update', () => {
           ArrayProto[key].apply(this, args);
         });
@@ -51,7 +52,7 @@ function ArrayEmitter(...args) {
       value: function(...args) {
         var newArr = new ArrayEmitter();
         var _emitter = this.$emitter;
-        _emitter.setMaxListeners(_emitter.getMaxListeners() + 1);
+        _emitter.setMaxListeners(getMaxListeners(_emitter) + 1);
         _emitter.on('update', () => {
           updateNewArr(ArrayProto[key].apply(this, args));
           newArr.$emitter.emit('update', newArr);
@@ -79,7 +80,7 @@ function ArrayEmitter(...args) {
       var qries = allArrs.filter((obj) => (Array.isArray(obj) && obj.$emitter));
       qries.forEach((_qry) => {
         var _emitter = _qry.$emitter;
-        _emitter.setMaxListeners(_emitter.getMaxListeners() + 1);
+        _emitter.setMaxListeners(getMaxListeners(_emitter) + 1);
         _emitter.on('update', () => {
           updateConcat();
           newArr.$emitter.emit('update', newArr);
@@ -101,4 +102,16 @@ function ArrayEmitter(...args) {
   Object.defineProperties(arr, ArrayEmitterMethods);
 
   return arr;
+}
+
+function getMaxListeners(emitter) {
+  if (emitter.getMaxListeners) {
+    return emitter.getMaxListeners();
+  }
+
+  if (isUndefined(emitter._maxListeners)) {
+    return EventEmitter.defaultMaxListeners;
+  }
+
+  return emitter._maxListeners;
 }

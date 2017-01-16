@@ -48,6 +48,7 @@
     "lodash.isfunction": "^3.0.8",
     "lodash.isobject": "^3.0.2",
     "lodash.isstring": "^4.0.1",
+    "lodash.isundefined": "^3.0.1",
     "lodash.pluck": "^3.1.2",
     "lodash.union": "^3.1.0",
     "lodash.uniq": "^3.2.2",
