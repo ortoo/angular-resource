@@ -323,6 +323,20 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       results.$Model = Resource;
       results.$serverResults = serverResults;
 
+      // Put currentSkip and currentLimit onto the results
+      Object.defineProperty(results, 'currentLimit', {
+        enumerable: true,
+        get: () => {
+          return currentLimit;
+        }
+      });
+      Object.defineProperty(results, 'currentSkip', {
+        enumerable: true,
+        get: () => {
+          return currentSkip;
+        }
+      });
+
       return results;
     }
 
@@ -594,6 +608,20 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       results.chain = chain;
       results.$Model = Resource;
       results.$skip = 0;
+
+      // Put currentSkip and currentLimit onto the results
+      Object.defineProperty(results, 'currentLimit', {
+        enumerable: true,
+        get: () => {
+          return currentLimit;
+        }
+      });
+      Object.defineProperty(results, 'currentSkip', {
+        enumerable: true,
+        get: () => {
+          return currentSkip;
+        }
+      });
 
       return results;
     }
