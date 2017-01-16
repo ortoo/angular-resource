@@ -35,7 +35,7 @@ function ArrayEmitter(...args) {
       enumerable: false,
       value: function(...args) {
         var _emitter = this.$emitter;
-        _emitter.setMaxListeners(getMaxListeners(_emitter) + 1);
+        incrMaxListeners(_emitter);
         _emitter.on('update', () => {
           ArrayProto[key].apply(this, args);
         });
@@ -52,7 +52,7 @@ function ArrayEmitter(...args) {
       value: function(...args) {
         var newArr = new ArrayEmitter();
         var _emitter = this.$emitter;
-        _emitter.setMaxListeners(getMaxListeners(_emitter) + 1);
+        incrMaxListeners(_emitter);
         _emitter.on('update', () => {
           updateNewArr(ArrayProto[key].apply(this, args));
           newArr.$emitter.emit('update', newArr);
@@ -80,7 +80,7 @@ function ArrayEmitter(...args) {
       var qries = allArrs.filter((obj) => (Array.isArray(obj) && obj.$emitter));
       qries.forEach((_qry) => {
         var _emitter = _qry.$emitter;
-        _emitter.setMaxListeners(getMaxListeners(_emitter) + 1);
+        incrMaxListeners(_emitter);
         _emitter.on('update', () => {
           updateConcat();
           newArr.$emitter.emit('update', newArr);
@@ -114,4 +114,13 @@ function getMaxListeners(emitter) {
   }
 
   return emitter._maxListeners;
+}
+
+function incrMaxListeners(emitter) {
+  var maxListeners = getMaxListeners(emitter);
+
+  // A maxListeners of 0 means infinite, We don't want to increment in that case
+  if (maxListeners) {
+    emitter.setMaxListeners(maxListeners + 1);
+  }
 }
