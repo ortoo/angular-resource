@@ -18,6 +18,9 @@ export default function($q) {
     });
     var newqry = Model.query(_qry);
 
+    // Bind qryFn to newqry
+    qryFn = qryFn.bind(newqry);
+
     // Watch our results. If they change then reattempt the query
     origQry.$emitter.on('update', function(newRes) {
       // Only do this if we have initially synced
@@ -34,6 +37,7 @@ export default function($q) {
     var proms = [];
     var initialSync;
     var allqries;
+
     origQueries.forEach(function(origQry) {
       proms.push(origQry.$promise);
       origQry.$emitter.on('update', function() {
@@ -49,10 +53,12 @@ export default function($q) {
       return qryFn(res);
     }));
 
+    qryFn = qryFn.bind(newqry);
+
     return newqry;
   }
 
   Chain.all = all;
 
   return Chain;
-};
+}
