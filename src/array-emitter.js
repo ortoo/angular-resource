@@ -33,7 +33,9 @@ function ArrayEmitter(...args) {
     ArrayEmitterMethods[key] = {
       enumerable: false,
       value: function(...args) {
-        this.$emitter.on('update', () => {
+        var _emitter = this.$emitter;
+        _emitter.setMaxListeners(_emitter.getMaxListeners() + 1);
+        _emitter.on('update', () => {
           ArrayProto[key].apply(this, args);
         });
 
@@ -48,7 +50,9 @@ function ArrayEmitter(...args) {
       enumerable: false,
       value: function(...args) {
         var newArr = new ArrayEmitter();
-        this.$emitter.on('update', () => {
+        var _emitter = this.$emitter;
+        _emitter.setMaxListeners(_emitter.getMaxListeners() + 1);
+        _emitter.on('update', () => {
           updateNewArr(ArrayProto[key].apply(this, args));
           newArr.$emitter.emit('update', newArr);
         });
@@ -74,7 +78,9 @@ function ArrayEmitter(...args) {
       var allArrs = [this, ...args];
       var qries = allArrs.filter((obj) => (Array.isArray(obj) && obj.$emitter));
       qries.forEach((_qry) => {
-        _qry.$emitter.on('update', () => {
+        var _emitter = _qry.$emitter;
+        _emitter.setMaxListeners(_emitter.getMaxListeners() + 1);
+        _emitter.on('update', () => {
           updateConcat();
           newArr.$emitter.emit('update', newArr);
         });
