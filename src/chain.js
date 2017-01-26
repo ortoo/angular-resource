@@ -14,7 +14,8 @@ export default function($q) {
     // query object
     var _qry = origQry.$promise.then(function() {
       initialSync = true;
-      return qryFn(origQry);
+      // We copy the array here so that we can do things like .map without auto-updating repercussions.
+      return qryFn([...origQry]);
     });
     var newqry = Model.query(_qry);
 
@@ -25,7 +26,8 @@ export default function($q) {
     origQry.$emitter.on('update', function(newRes) {
       // Only do this if we have initially synced
       if (initialSync) {
-        newqry.replace(qryFn(newRes));
+        // We copy the array here so that we can do things like .map without auto-updating repercussions.
+        newqry.replace(qryFn([...newRes]));
       }
     });
 
@@ -38,19 +40,24 @@ export default function($q) {
     var initialSync;
     var allqries;
 
-    origQueries.forEach(function(origQry) {
+    for (let ii = 0; ii < origQueries.length; ii++) {
+      let origQry = origQueries[ii];
       proms.push(origQry.$promise);
-      origQry.$emitter.on('update', function() {
+      origQry.$emitter.on('update', function(newRes) {
         if (initialSync) {
+          allqries[ii] = [...newRes];
           newqry.replace(qryFn(allqries));
         }
       });
-    });
+    }
 
     newqry = Model.query($q.all(proms).then(function(res) {
       initialSync = true;
-      allqries = res;
-      return qryFn(res);
+      allqries = [];
+      for (let result of res) {
+        allqries.push([...result]);
+      }
+      return qryFn(allqries);
     }));
 
     qryFn = qryFn.bind(newqry);

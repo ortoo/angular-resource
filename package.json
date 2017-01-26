@@ -24,6 +24,7 @@
     "babel-preset-es2015": "^6.3.13",
     "babelify": "^7.2.0",
     "browserify": "^12.0.1",
+    "cz-conventional-changelog": "^1.2.0",
     "eslint": "^2.12.0",
     "eslint-plugin-angular": "^1.1.1",
     "gulp": "^3.9.0",
@@ -97,6 +98,11 @@
           "localforage": "jspm:localforage@^1.3.0"
         }
       }
+    }
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
     }
   }
 }
