@@ -1,6 +1,6 @@
 {
   "name": "@ortoo/angular-resource",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "Magical CRUD resource management for angular",
   "main": "lib/index.js",
   "scripts": {
@@ -42,7 +42,6 @@
   },
   "dependencies": {
     "jiff": "^0.7.2",
-    "localforage": "^1.4.0",
     "lodash.clone": "^3.0.3",
     "lodash.isempty": "^3.0.4",
     "lodash.isequal": "^4.4.0",
@@ -57,48 +56,6 @@
     "lodash.without": "^3.2.1",
     "moment": "^2.10.6",
     "nedb": "^1.8.0"
-  },
-  "registry": "jspm",
-  "jspm": {
-    "directories": {
-      "lib": "lib"
-    },
-    "main": "index.js",
-    "dependencies": {
-      "angular": "github:angular/bower-angular@^1.4.7",
-      "angular-localforage": "github:ocombe/angular-localForage@^1.2.3",
-      "jiff": "github:cujojs/jiff@^0.7.2",
-      "lodash.clone": "npm:lodash.clone@^3.0.3",
-      "lodash.flatten": "npm:lodash.flatten@^3.0.2",
-      "lodash.isempty": "npm:lodash.isempty@^3.0.4",
-      "lodash.isobject": "npm:lodash.isobject@^3.0.2",
-      "lodash.keys": "npm:lodash.keys@^3.1.2",
-      "lodash.pluck": "npm:lodash.pluck@^3.1.2",
-      "lodash.union": "npm:lodash.union@^3.1.0",
-      "lodash.uniq": "npm:lodash.uniq@^3.2.2",
-      "lodash.values": "npm:lodash.values@^3.0.0",
-      "lodash.without": "npm:lodash.without@^3.2.1",
-      "moment": "npm:moment@^2.10.6",
-      "events": "jspm:events@^0.1.1"
-    },
-    "devDependencies": {},
-    "overrides": {
-      "github:ocombe/angular-localForage@1.2.3": {
-        "directories": {
-          "lib": "dist"
-        },
-        "format": "cjs",
-        "shim": {
-          "angular-localForage": [
-            "angular"
-          ]
-        },
-        "dependencies": {
-          "angular": "jspm:angular@^1.2.0",
-          "localforage": "jspm:localforage@^1.3.0"
-        }
-      }
-    }
   },
   "config": {
     "commitizen": {
