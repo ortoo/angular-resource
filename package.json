@@ -1,5 +1,5 @@
 {
-  "name": "@ortoo/angular-resource",
+  "name": "@ortoo/angular-resource-ng1",
   "version": "2.0.11",
   "description": "Magical CRUD resource management for angular",
   "main": "lib/index.js",
