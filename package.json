@@ -41,7 +41,7 @@
     "angular": "^1.4.7"
   },
   "dependencies": {
-    "jiff": "^0.7.2",
+    "jiff": "github:ortoo/jiff",
     "lodash.clone": "^3.0.3",
     "lodash.isempty": "^3.0.4",
     "lodash.isequal": "^4.4.0",

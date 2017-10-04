@@ -3,6 +3,7 @@ import moment from 'moment';
 
 import clone from 'lodash.clone';
 import pluck from 'lodash.pluck';
+import isObject from 'lodash.isobject';
 
 import angular from 'angular';
 
@@ -47,7 +48,13 @@ export function diff(obj1, obj2) {
   obj1 = toJSON(obj1);
   obj2 = toJSON(obj2);
 
-  return jiff.diff(obj1, obj2);
+  const patch = jiff.diff(obj1, obj2, {
+    objectIdKey: '_id'
+  });
+
+  // Search through
+
+  return patch;
 }
 
 export function applyPatch(res, patch) {
