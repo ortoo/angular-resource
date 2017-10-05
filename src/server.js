@@ -4,8 +4,9 @@ import uniq from 'lodash.uniq';
 
 import angular from 'angular';
 
-import { BehaviorSubject } from 'rxjs/BehaviorSubject';
+import { Subject } from 'rxjs/Subject';
 import 'rxjs/add/operator/bufferTime';
+import 'rxjs/add/operator/filter';
 
 import * as utils from './utils';
 
@@ -25,16 +26,31 @@ export default function($q, $injector) {
     }
 
     // Batch up any server get requests into periods of 20ms
-    const fetchSubject = new BehaviorSubject();
+    const fetchSubject = new Subject();
 
-    fetchSubject.bufferTime(20).subscribe(ids => {
-      var req = sock.get(ids);
+    fetchSubject.filter(id => id).bufferTime(20).subscribe(ids => {
+      if (!(ids && ids.length)) {
+        return;
+      }
+
+      // If any of our requested resources have outstanding updates
+      // then don't fetch them. The update will come back with the
+      // latest model
+      var idsToFetch = ids.filter(id => {
+        let res = _resources[id];
+        return res && !res.$updating;
+      });
+
+      // Uniquify the ids
+      idsToFetch = [...new Set(idsToFetch)];
+
+      var req = sock.get(idsToFetch);
       req.then(function(response) {
 
         // We might not get a response (say if the app is offline). In this case
         // we just resolve everything as is.
         if (angular.isUndefined(response)) {
-          ids.forEach(function(id) {
+          idsToFetch.forEach(function(id) {
             var res = _resources[id];
             res.$fetching = false;
 
@@ -59,8 +75,8 @@ export default function($q, $injector) {
             }
           });
 
-          // If any of our unknown ids hasn't been resolved then we assume its deleted...
-          ids.forEach(function(id) {
+          // If any of our unknown idsToFetch hasn't been resolved then we assume its deleted...
+          idsToFetch.forEach(function(id) {
             var res = _resources[id];
             if (!res) {
               return;
@@ -75,8 +91,8 @@ export default function($q, $injector) {
         }
       }, function(reason) {
         // Handle an error...
-        // Clean up any of our unknown ids - we don't know about them
-        ids.forEach(function(id) {
+        // Clean up any of our unknown idsToFetch - we don't know about them
+        idsToFetch.forEach(function(id) {
           var res = _resources[id];
           res.$fetching = false;
           res.$deferred.reject(reason);
@@ -118,8 +134,7 @@ export default function($q, $injector) {
       // Make sure we have no repeated items in the array
       ids = uniq(ids);
 
-      // Go and load in the results, compiling a list of resources we need to go and fetch
-      var unknownIds = [];
+      // Go and load in the results
       ids.forEach(function(id) {
         var res = _resources[id];
         if (res) {
@@ -131,7 +146,7 @@ export default function($q, $injector) {
           // go and refresh the data because we could have been created from somewhere that
           // isn't the server
           if ((force && res.$resolved) || !(res.$resolved || res.$fetching)) {
-            unknownIds.push(id);
+            fetchSubject.next(id);
             res.$fetching = true;
 
             // If we've already resolved then create a new promise object on the resource
@@ -146,14 +161,9 @@ export default function($q, $injector) {
           res = _resources[id] = new ServerResource();
           res.$fetching = true;
           results.push(transform(res, id));
-          unknownIds.push(id);
+          fetchSubject.next(id);
         }
       });
-
-      // Do we have any ids to fetch. If so go and get them
-      if (unknownIds.length > 0) {
-        fetchResources(unknownIds);
-      }
 
       if (!singleId) {
         // Wait for all the promises to be resolved before resolving
@@ -172,31 +182,52 @@ export default function($q, $injector) {
       return transformResults();
     }
 
-    function fetchResources(ids) {
-      if (!ids) {
-        return $q.resolve();
-      }
-
-      // Bung the ids onto a queue of all the things we want to get
-      for (let id of ids) {
-        fetchSubject.next(id);
-      }
-    }
-
     // Perform a save
     function save(patch) {
-      utils.applyPatch(this, patch);
 
-      // We update if we have an _id - otherwise we create.
-      var prom;
-      if (this._id) {
-        prom = updateResource(this, patch);
-      } else {
-        // This is an initial create
-        prom = createResource(this);
+      this.$outstandingPatches.push(patch);
+
+      if (this.$outstandingUpdatePromise) {
+        return this.$outstandingUpdatePromise;
       }
 
-      return prom;
+      // Wait for any existing update(s) to finish before doing the next one
+      const prom = this.$updatePromise.then(() => {
+        // Combine all outstanding patches
+        const combinedPatch = [];
+        for (let patch of this.$outstandingPatches) {
+          combinedPatch.push(...patch);
+        }
+
+        this.$updating = true;
+        this.$outstandingPatches = [];
+        this.$outstandingUpdatePromise = undefined;
+
+        utils.applyPatch(this, combinedPatch);
+
+        // We update if we have an _id - otherwise we create.
+        if (this._id) {
+          if (combinedPatch.length === 0) {
+            return this;
+          } else {
+            return updateResource(this, combinedPatch);
+          }
+        } else {
+          // This is an initial create
+          return createResource(this);
+        }
+      });
+
+      this.$outstandingUpdatePromise = prom;
+
+      // this update is now the latest updatePromise
+      this.$updatePromise = prom.catch(function () {
+        // Do nothing - i.e. just resolve $updateProm if there was a problem
+      }).finally(() => {
+        this.$updating = false;
+      });
+
+      return this.$outstandingUpdatePromise;
     }
 
     function updateResource(res, patch) {
@@ -303,7 +334,11 @@ export default function($q, $injector) {
       this.$resolved = false; // Have we had an initial resolution of the promise
       this.$deleted = false; // Has the resource been deleted
       this.$fetching = false; // Are we currently fetching data for this resource
-      this.$updating = false; // Are we currently updating this resource
+      this.$updating = false; // Are we currently updating?
+
+      this.$updatePromise = $q.resolve();
+      this.$outstandingUpdatePromise = undefined;
+      this.$outstandingPatches = [];
 
       this.$id = id ? id : utils.uuid();
 
