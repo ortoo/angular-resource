@@ -4,6 +4,9 @@ import uniq from 'lodash.uniq';
 
 import angular from 'angular';
 
+import { BehaviorSubject } from 'rxjs/BehaviorSubject';
+import 'rxjs/add/operator/bufferTime';
+
 import * as utils from './utils';
 
 export default function($q, $injector) {
@@ -20,6 +23,67 @@ export default function($q, $injector) {
     function toObject() {
       return utils.toObject(this);
     }
+
+    // Batch up any server get requests into periods of 20ms
+    const fetchSubject = new BehaviorSubject();
+
+    fetchSubject.bufferTime(20).subscribe(ids => {
+      var req = sock.get(ids);
+      req.then(function(response) {
+
+        // We might not get a response (say if the app is offline). In this case
+        // we just resolve everything as is.
+        if (angular.isUndefined(response)) {
+          ids.forEach(function(id) {
+            var res = _resources[id];
+            res.$fetching = false;
+
+            if (!res.$resolved) {
+              res.$resolved = true;
+              res.$deferred.resolve(res);
+            }
+          });
+        } else {
+          response.forEach(function(resdata) {
+            if (resdata._id) {
+              var id = resdata._id;
+              var res = _resources[id];
+              res.$fetching = false;
+              updateVal(res, resdata);
+
+              // We've got the data for the first time - resolve the deferred
+              if (!res.$resolved) {
+                res.$deferred.resolve(res);
+                res.$resolved = true;
+              }
+            }
+          });
+
+          // If any of our unknown ids hasn't been resolved then we assume its deleted...
+          ids.forEach(function(id) {
+            var res = _resources[id];
+            if (!res) {
+              return;
+            }
+
+            res.$fetching = false;
+            if (!res.$resolved) {
+              res.$deleted = true;
+              res.$emitter.emit('update', null, res.$toObject());
+            }
+          });
+        }
+      }, function(reason) {
+        // Handle an error...
+        // Clean up any of our unknown ids - we don't know about them
+        ids.forEach(function(id) {
+          var res = _resources[id];
+          res.$fetching = false;
+          res.$deferred.reject(reason);
+          delete _resources[id];
+        });
+      });
+    });
 
     // Returns the object or a list of objects (depending on ids passed in)
     // The array or object will have the $promise attribute to use.
@@ -88,61 +152,7 @@ export default function($q, $injector) {
 
       // Do we have any ids to fetch. If so go and get them
       if (unknownIds.length > 0) {
-        var req = sock.get(unknownIds);
-        req.then(function(response) {
-
-          // We might not get a response (say if the app is offline). In this case
-          // we just resolve everything as is.
-          if (angular.isUndefined(response)) {
-            unknownIds.forEach(function(id) {
-              var res = _resources[id];
-              res.$fetching = false;
-
-              if (!res.$resolved) {
-                res.$resolved = true;
-                res.$deferred.resolve(res);
-              }
-            });
-          } else {
-            response.forEach(function(resdata) {
-              if (resdata._id) {
-                var id = resdata._id;
-                var res = _resources[id];
-                res.$fetching = false;
-                updateVal(res, resdata);
-
-                // We've got the data for the first time - resolve the deferred
-                if (!res.$resolved) {
-                  res.$deferred.resolve(res);
-                  res.$resolved = true;
-                }
-              }
-            });
-
-            // If any of our unknown ids hasn't been resolved then we assume its deleted...
-            unknownIds.forEach(function(id) {
-              var res = _resources[id];
-              if (!res) {
-                return;
-              }
-
-              res.$fetching = false;
-              if (!res.$resolved) {
-                res.$deleted = true;
-                res.$emitter.emit('update', null, res.$toObject());
-              }
-            });
-          }
-        }, function(reason) {
-          // Handle an error...
-          // Clean up any of our unknown ids - we don't know about them
-          unknownIds.forEach(function(id) {
-            var res = _resources[id];
-            res.$fetching = false;
-            res.$deferred.reject(reason);
-            delete _resources[id];
-          });
-        });
+        fetchResources(unknownIds);
       }
 
       if (!singleId) {
@@ -162,17 +172,31 @@ export default function($q, $injector) {
       return transformResults();
     }
 
+    function fetchResources(ids) {
+      if (!ids) {
+        return $q.resolve();
+      }
+
+      // Bung the ids onto a queue of all the things we want to get
+      for (let id of ids) {
+        fetchSubject.next(id);
+      }
+    }
+
     // Perform a save
     function save(patch) {
       utils.applyPatch(this, patch);
 
       // We update if we have an _id - otherwise we create.
+      var prom;
       if (this._id) {
-        return updateResource(this, patch);
+        prom = updateResource(this, patch);
       } else {
         // This is an initial create
-        return createResource(this);
+        prom = createResource(this);
       }
+
+      return prom;
     }
 
     function updateResource(res, patch) {
@@ -279,6 +303,7 @@ export default function($q, $injector) {
       this.$resolved = false; // Have we had an initial resolution of the promise
       this.$deleted = false; // Has the resource been deleted
       this.$fetching = false; // Are we currently fetching data for this resource
+      this.$updating = false; // Are we currently updating this resource
 
       this.$id = id ? id : utils.uuid();
 

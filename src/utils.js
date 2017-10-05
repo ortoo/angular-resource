@@ -3,7 +3,6 @@ import moment from 'moment';
 
 import clone from 'lodash.clone';
 import pluck from 'lodash.pluck';
-import isObject from 'lodash.isobject';
 
 import angular from 'angular';
 
