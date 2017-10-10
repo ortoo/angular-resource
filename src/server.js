@@ -5,8 +5,8 @@ import uniq from 'lodash.uniq';
 import angular from 'angular';
 
 import { Subject } from 'rxjs/Subject';
-import 'rxjs/add/operator/bufferTime';
 import 'rxjs/add/operator/filter';
+import './bufferTimeReactive'
 
 import * as utils from './utils';
 
@@ -32,7 +32,7 @@ export default function($q, $injector) {
     // Buffertime does continuous timeouts. These then can trigger
     // angular $digests in an ngUpgrade scenario
     runOutsideZone(() => {
-      fetchSubject.filter(id => id).bufferTime(20).subscribe(ids => {
+      fetchSubject.filter(id => id).bufferTimeReactive(20).subscribe(ids => {
         runInsideZone(() => {
           if (!(ids && ids.length)) {
             return;
