@@ -14,7 +14,8 @@ export default function($q, $injector) {
   'ngInject';
 
   function ServerResourceFactory(url, rootKey, rootKeyPlural) {
-    var socket = $injector.get('socket');
+    const socket = $injector.get('socket');
+    const ngZone = $injector.get('ngZone');
     var sock = socket(url, rootKey, rootKeyPlural);
 
     // Object holding the resources (keys are the object ids)
@@ -28,75 +29,81 @@ export default function($q, $injector) {
     // Batch up any server get requests into periods of 20ms
     const fetchSubject = new Subject();
 
-    fetchSubject.filter(id => id).bufferTime(20).subscribe(ids => {
-      if (!(ids && ids.length)) {
-        return;
-      }
+    // Buffertime does continuous timeouts. These then can trigger
+    // angular $digests in an ngUpgrade scenario
+    runOutsideZone(() => {
+      fetchSubject.filter(id => id).bufferTime(20).subscribe(ids => {
+        runInsideZone(() => {
+          if (!(ids && ids.length)) {
+            return;
+          }
 
-      // If any of our requested resources have outstanding updates
-      // then don't fetch them. The update will come back with the
-      // latest model
-      var idsToFetch = ids.filter(id => {
-        let res = _resources[id];
-        return res && !res.$updating;
-      });
-
-      // Uniquify the ids
-      idsToFetch = [...new Set(idsToFetch)];
-
-      var req = sock.get(idsToFetch);
-      req.then(function(response) {
-
-        // We might not get a response (say if the app is offline). In this case
-        // we just resolve everything as is.
-        if (angular.isUndefined(response)) {
-          idsToFetch.forEach(function(id) {
-            var res = _resources[id];
-            res.$fetching = false;
-
-            if (!res.$resolved) {
-              res.$resolved = true;
-              res.$deferred.resolve(res);
-            }
+          // If any of our requested resources have outstanding updates
+          // then don't fetch them. The update will come back with the
+          // latest model
+          var idsToFetch = ids.filter(id => {
+            let res = _resources[id];
+            return res && !res.$updating;
           });
-        } else {
-          response.forEach(function(resdata) {
-            if (resdata._id) {
-              var id = resdata._id;
+
+          // Uniquify the ids
+          idsToFetch = [...new Set(idsToFetch)];
+
+          var req = sock.get(idsToFetch);
+          req.then(function(response) {
+
+            // We might not get a response (say if the app is offline). In this case
+            // we just resolve everything as is.
+            if (angular.isUndefined(response)) {
+              idsToFetch.forEach(function(id) {
+                var res = _resources[id];
+                res.$fetching = false;
+
+                if (!res.$resolved) {
+                  res.$resolved = true;
+                  res.$deferred.resolve(res);
+                }
+              });
+            } else {
+              response.forEach(function(resdata) {
+                if (resdata._id) {
+                  var id = resdata._id;
+                  var res = _resources[id];
+                  res.$fetching = false;
+                  updateVal(res, resdata);
+
+                  // We've got the data for the first time - resolve the deferred
+                  if (!res.$resolved) {
+                    res.$deferred.resolve(res);
+                    res.$resolved = true;
+                  }
+                }
+              });
+
+              // If any of our unknown idsToFetch hasn't been resolved then we assume its deleted...
+              idsToFetch.forEach(function(id) {
+                var res = _resources[id];
+                if (!res) {
+                  return;
+                }
+
+                res.$fetching = false;
+                if (!res.$resolved) {
+                  res.$deleted = true;
+                  res.$emitter.emit('update', null, res.$toObject());
+                }
+              });
+            }
+          }, function(reason) {
+            // Handle an error...
+            // Clean up any of our unknown idsToFetch - we don't know about them
+            idsToFetch.forEach(function(id) {
               var res = _resources[id];
               res.$fetching = false;
-              updateVal(res, resdata);
-
-              // We've got the data for the first time - resolve the deferred
-              if (!res.$resolved) {
-                res.$deferred.resolve(res);
-                res.$resolved = true;
-              }
-            }
+              res.$deferred.reject(reason);
+              delete _resources[id];
+            });
           });
-
-          // If any of our unknown idsToFetch hasn't been resolved then we assume its deleted...
-          idsToFetch.forEach(function(id) {
-            var res = _resources[id];
-            if (!res) {
-              return;
-            }
-
-            res.$fetching = false;
-            if (!res.$resolved) {
-              res.$deleted = true;
-              res.$emitter.emit('update', null, res.$toObject());
-            }
-          });
-        }
-      }, function(reason) {
-        // Handle an error...
-        // Clean up any of our unknown idsToFetch - we don't know about them
-        idsToFetch.forEach(function(id) {
-          var res = _resources[id];
-          res.$fetching = false;
-          res.$deferred.reject(reason);
-          delete _resources[id];
         });
       });
     });
@@ -366,6 +373,22 @@ export default function($q, $injector) {
     ServerResource.prototype.$updateVal = _updateVal;
 
     return ServerResource;
+
+    function runOutsideZone(fn) {
+      if (ngZone) {
+        ngZone.runOutsideAngular(fn);
+      } else {
+        fn();
+      }
+    }
+
+    function runInsideZone(fn) {
+      if (ngZone) {
+        ngZone.run(fn);
+      } else {
+        fn();
+      }
+    }
   }
 
   return ServerResourceFactory;
