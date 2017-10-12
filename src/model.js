@@ -140,6 +140,13 @@ export default function(ResourceDBFactoryProvider) {
 
         emitter.emit('remove', this);
 
+        prom.then(() => {
+          if (!this.$resolved) {
+            this.$deferred.resolve(this);
+            this.$resolved = true;
+          }
+        });
+
         return prom;
       }
 

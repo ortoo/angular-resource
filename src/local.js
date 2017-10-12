@@ -249,7 +249,9 @@ export default function($q,
 
     function performDbSync(res) {
       res.$dbresync = false;
-      return db.update(res).then(function() {
+      return db.update(res).catch(function () {
+        // Pass - if something goes wrong then we can continue without it
+      }).then(function() {
         if (res.$dbresync) {
           return performDbSync(res);
         }

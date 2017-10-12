@@ -86,6 +86,7 @@ export default function($q, $injector) {
             if (!res.$resolved) {
               res.$deleted = true;
               res.$deferred.resolve(res);
+              res.$resolved = true;
               res.$emitter.emit('update', null, res.$toObject());
             }
           });
@@ -105,6 +106,11 @@ export default function($q, $injector) {
     // Returns the object or a list of objects (depending on ids passed in)
     // The array or object will have the $promise attribute to use.
     function get(ids, force, transform) {
+
+      // No ids? just return undefined
+      if (!ids) {
+        return;
+      }
 
       if (angular.isFunction(force)) {
         transform = force;
@@ -130,6 +136,8 @@ export default function($q, $injector) {
       if (angular.isString(ids)) {
         singleId = true;
         ids = [ids];
+      } else if (!Array.isArray(ids)) {
+        throw new Error('Unknown id type ' + ids);
       }
 
       // Make sure we have no repeated items in the array
