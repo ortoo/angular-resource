@@ -24,40 +24,64 @@ class Database {
     });
   }
 
-  remove(id, callback) {
-    var dbid = this.RES_TO_DB_ID_MAP[id];
-    if (dbid) {
+  remove(ids, callback) {
+    if (!Array.isArray(ids)) {
+      ids = [ids];
+    }
+
+    const dbIds = ids
+      .map(id => this.RES_TO_DB_ID_MAP[id])
+      .filter(id => id);
+
+    for (let id of ids) {
       delete this.RES_TO_DB_ID_MAP[id];
-      this.db.remove({_id: dbid}, {multi: true}, function(err) {
+    }
+
+    if (dbIds.length > 0) {
+      this.db.remove({_id: {$in: dbIds}}, {multi: true}, function(err) {
         callback(err);
       });
     } else {
-      callback(new Error(`No object to remove with id ${id}`));
+      callback(new Error(`No objects to remove with ids ${ids}`));
     }
   }
 
-  update(doc, callback) {
-    // We need to transform the resource by replacing the _id field (nedb uses its own id in that
-    // place). Instead call it __id
-    doc.__id = doc._id;
-    doc.__$id = doc.$id;
-    delete doc._id;
-    delete doc.$id;
-    var dbid = this.RES_TO_DB_ID_MAP[doc.__$id];
-    if (dbid) {
-      this.db.update({_id: dbid}, doc, {}, function(err) {
-        callback(err);
-      });
-    } else {
-      this.db.insert(doc, (err, newDoc) => {
-        if (err) {
-          return callback(err);
-        }
-
-        this.RES_TO_DB_ID_MAP[doc.__$id] = newDoc._id;
-        callback();
-      });
+  update(docs, callback) {
+    if (!Array.isArray(docs)) {
+      docs = [docs];
     }
+
+    var proms = docs.map(doc => {
+      return new Promise((resolve, reject) => {
+        // We need to transform the resource by replacing the _id field (nedb uses its own id in that
+        // place). Instead call it __id
+        doc.__id = doc._id;
+        doc.__$id = doc.$id;
+        delete doc._id;
+        delete doc.$id;
+        var dbid = this.RES_TO_DB_ID_MAP[doc.__$id];
+        if (dbid) {
+          this.db.update({_id: dbid}, doc, {}, function(err) {
+            if (err) {
+              return reject(err);
+            }
+
+            resolve();
+          });
+        } else {
+          this.db.insert(doc, (err, newDoc) => {
+            if (err) {
+              return reject(err);
+            }
+
+            this.RES_TO_DB_ID_MAP[doc.__$id] = newDoc._id;
+            resolve();
+          });
+        }
+      });
+    });
+
+    Promise.all(proms).then(callback, callback);
   }
 
   query(qry, callback) {

@@ -3,12 +3,20 @@ import * as utils from './utils';
 
 import values from 'lodash.values';
 
+import { Subject } from 'rxjs/Subject';
+import { Observable } from 'rxjs/Observable';
+import 'rxjs/add/observable/fromPromise';
+import 'rxjs/add/operator/filter';
+import 'rxjs/add/operator/mergeMap';
+import 'rxjs/add/operator/multicast';
+import 'rxjs/add/operator/first';
+import './bufferTimeReactive';
+
 import angular from 'angular';
 
 var MAX_STORAGE_SIZE = 3 * 1024 * 1024; // 3MB - should fit without problems in any browser
 
 export default function($q,
-                        $rootScope,
                         $timeout,
                         $window,
                         ServerResourceFactory,
@@ -45,6 +53,26 @@ export default function($q,
 
     var pStorageKey = utils.persistentStorageKey(url);
     var persistProm = null;
+
+    // Batch up any server get requests into periods of 20ms
+    const dbSyncSubject = new Subject();
+    const _syncOperationsSubj = new Subject();
+
+    const syncOperations = dbSyncSubject.filter(res => res)
+      .bufferTimeReactive(100)
+      .mergeMap(docs => {
+        // Remove duplicates
+        docs = [...new Set(docs)];
+
+        return Observable.fromPromise(performDbSync(docs));
+      })
+      .multicast(_syncOperationsSubj)
+      .refCount();
+
+
+    syncOperations.subscribe(() => {
+      QueryList.refresh();
+    });
 
     function toObject() {
       return utils.toObject(this);
@@ -233,11 +261,11 @@ export default function($q,
         // Notify that we have changed
         res.$emitter.emit('update', res.$toObject(), preexist);
         // Kick the db
-        var syncprom = syncToStorage(res) || $q.when();
+        syncToStorage(res);
 
-        syncprom.then(function() {
-          // We might have synced for the first time
-          return res.$serv.$promise.then(function() {
+        // We might have synced for the first time
+        syncOperations.first().subscribe(() => {
+          res.$serv.$promise.then(function() {
             if (!res.$resolved) {
               res.$deferred.resolve(res);
               res.$resolved = true;
@@ -247,16 +275,9 @@ export default function($q,
       }
     }
 
-    function performDbSync(res) {
-      res.$dbresync = false;
-      return db.update(res).catch(function () {
+    function performDbSync(docs) {
+      return db.update(docs).catch(function () {
         // Pass - if something goes wrong then we can continue without it
-      }).then(function() {
-        if (res.$dbresync) {
-          return performDbSync(res);
-        }
-
-        return;
       });
     }
 
@@ -365,25 +386,8 @@ export default function($q,
     }
 
     function syncToStorage(res) {
-
       persistChange();
-
-      if (res.$dbsync) {
-        res.$dbresync = true;
-      } else {
-        var prom = performDbSync(res);
-
-        prom.finally(function() {
-          // Whatever happens remove the $sync promise and refresh all the queries
-          delete res.$dbsync;
-          res.$dbresync = false;
-          QueryList.refresh();
-        });
-
-        res.$dbsync = prom;
-      }
-
-      return res.$dbsync;
+      dbSyncSubject.next(res);
     }
 
     function updateServer(val) {
@@ -452,9 +456,6 @@ export default function($q,
       this.$serv.$emitter.on('update', function(newVal, oldVal) {
         updatedServer(res, newVal, oldVal);
       });
-
-      // Update us in the db
-      this.$dbresync = false;
 
       // If it's from the server don't create it yet. Wait for the update to come (along
       // with hopefully all the data)

@@ -40,8 +40,10 @@ export default function() {
 
   this.$get = database;
 
-  function database($q, $rootScope, $log) {
+  function database($q, $rootScope, $log, $injector) {
     'ngInject';
+
+    const ngZone = $injector.get('ngZone');
 
     // Kick off the web worker
     var worker;
@@ -74,30 +76,50 @@ export default function() {
         this.cbMaps = {};
         this.dbid = utils.uuid();
 
-        worker.addEventListener('message', (event) => {
+        runOutsideAngular(() => {
+          worker.addEventListener('message', (event) => {
 
-          var data = event.data.data;
-          var error = event.data.error;
-          var id = event.data.id;
-          var cb = this.cbMaps[id];
+            var data = event.data.data;
+            var error = event.data.error;
+            var id = event.data.id;
+            var cb = this.cbMaps[id];
 
-          if (cb) {
-            $rootScope.$apply(function() {
-              cb(error, data);
-            });
-          }
+            if (cb) {
+              runInAngular(function() {
+                cb(error, data);
+              });
+            }
+          });
         });
       }
 
-      update(res) {
-        if (res.$deleted) {
-          return this.runWorkerFunction('remove', res.$id);
-        } else {
-          var doc = res.$toObject();
-          // Stick on the internal id
-          doc.$id = res.$id;
-          return this.runWorkerFunction('update', doc);
+      update(resArr) {
+        if (!Array.isArray(resArr)) {
+          resArr = [resArr];
         }
+
+        const toDelete = resArr
+          .filter(res => res.$deleted)
+          .map(res => res.$id);
+        const toUpdate = resArr
+          .filter(res => !res.$deleted)
+          .map(res => {
+            const doc = res.$toObject();
+            // Stick on the internal id
+            doc.$id = res.$id;
+            return doc;
+          });
+
+        const proms = [];
+        if (toDelete.length > 0) {
+          proms.push(this.runWorkerFunction('remove', toDelete));
+        }
+
+        if (toUpdate.length > 0) {
+          proms.push(this.runWorkerFunction('update', toUpdate));
+        }
+
+        return Promise.all(proms);
       }
 
       query(qry) {
@@ -143,11 +165,13 @@ export default function() {
       runWorkerFunction(fnName, ...args) {
         return $q((resolve, reject) => {
           var id = utils.uuid();
-          worker.postMessage({
-            fnName: fnName,
-            id: id,
-            dbid: this.dbid,
-            args: args
+          runOutsideAngular(() => {
+            worker.postMessage({
+              fnName: fnName,
+              id: id,
+              dbid: this.dbid,
+              args: args
+            });
           });
 
           this.cbMaps[id] = (err, resp) => {
@@ -167,5 +191,21 @@ export default function() {
     }
 
     return DBFactory;
+
+    function runOutsideAngular(fn) {
+      if (ngZone) {
+        ngZone.runOutsideAngular(fn);
+      } else {
+        setTimeout(fn); //eslint-disable-line angular/timeout-service
+      }
+    }
+
+    function runInAngular(fn) {
+      if (ngZone) {
+        ngZone.run(fn);
+      } else {
+        $rootScope.$apply(fn);
+      }
+    }
   }
 }
