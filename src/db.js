@@ -43,7 +43,12 @@ export default function() {
   function database($q, $rootScope, $log, $injector) {
     'ngInject';
 
-    const ngZone = $injector.get('ngZone');
+    var ngZone;
+    try {
+      ngZone = $injector.get('ngZone');
+    } catch (err) {
+      // Ignore - we don't necessarily expect it to be there
+    }
 
     // Kick off the web worker
     var worker;
