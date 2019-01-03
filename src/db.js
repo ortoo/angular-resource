@@ -1,25 +1,36 @@
-// db-worker-string is automatically built
-import workerString from './db-worker-string.js';
-import * as utils from './utils.js';
+import EventEmitter from 'events';
 import isObject from 'lodash.isobject';
 import isString from 'lodash.isstring';
 import isFunction from 'lodash.isfunction';
 
+import { Subject } from 'rxjs/Subject';
+import { Observable } from 'rxjs/Observable';
+import 'rxjs/add/observable/fromPromise';
+import 'rxjs/add/operator/filter';
+import 'rxjs/add/operator/mergeMap';
+import 'rxjs/add/operator/multicast';
+import 'rxjs/add/operator/do';
+import './bufferTimeReactive';
+
+// db-worker-string is automatically built
+import workerString from './db-worker-string.js';
+import * as utils from './utils.js';
+
 // These are the operators nedb supports
 var simpleOperators = {
-  '$lt': true,
-  '$lte': true,
-  '$gt': true,
-  '$gte': true,
-  '$in': true,
-  '$nin': true,
-  '$ne': true,
-  '$exists': true,
-  '$regex': true,
-  '$size': true,
-  '$or': true,
-  '$and': true,
-  '$not': true
+  $lt: true,
+  $lte: true,
+  $gt: true,
+  $gte: true,
+  $in: true,
+  $nin: true,
+  $ne: true,
+  $exists: true,
+  $regex: true,
+  $size: true,
+  $or: true,
+  $and: true,
+  $not: true
 };
 
 // We may not have the ability to create blobs, but we may be able to use a fallback to an
@@ -27,10 +38,9 @@ var simpleOperators = {
 var workerBlobUrl;
 var workerBlob;
 try {
-  workerBlob = new Blob([workerString], {type: 'text/javascript'});
+  workerBlob = new Blob([workerString], { type: 'text/javascript' });
   workerBlobUrl = URL.createObjectURL(workerBlob);
 } catch (err) {} //eslint-disable-line no-empty
-
 
 export default function() {
   var fallbackWorkerFile;
@@ -69,21 +79,51 @@ export default function() {
       }
     }
 
-    worker.addEventListener('error', (err) => {
+    worker.addEventListener('error', err => {
       $rootScope.$apply(function() {
         $log.error(err);
       });
     });
 
-    class Database {
+    class Database extends EventEmitter {
       constructor() {
+        super();
+
+        const dbUpdateSubject = new Subject();
+        const _updateOperationsSubj = new Subject();
 
         this.cbMaps = {};
         this.dbid = utils.uuid();
+        this._dbUpdateSubject = dbUpdateSubject;
+        this._updateOutstanding = false;
+
+        this.setMaxListeners(0);
+
+        // Batch up db updates
+        const updateOperations = dbUpdateSubject
+          .filter(res => res)
+          .do(() => {
+            this._updateOutstanding = true;
+          })
+          .bufferTimeReactive(100)
+          .mergeMap(docs => {
+            // Remove duplicates
+            docs = [...new Set(docs)];
+
+            return Observable.fromPromise(this._doBulkUpdate(docs));
+          })
+          .do(() => {
+            this._updateOutstanding = false;
+          })
+          .multicast(_updateOperationsSubj)
+          .refCount();
+
+        updateOperations.subscribe(() => {
+          this.emit('update');
+        });
 
         runOutsideAngular(() => {
-          worker.addEventListener('message', (event) => {
-
+          worker.addEventListener('message', event => {
             var data = event.data.data;
             var error = event.data.error;
             var id = event.data.id;
@@ -98,37 +138,12 @@ export default function() {
         });
       }
 
-      update(resArr) {
-        if (!Array.isArray(resArr)) {
-          resArr = [resArr];
-        }
-
-        const toDelete = resArr
-          .filter(res => res.$deleted)
-          .map(res => res.$id);
-        const toUpdate = resArr
-          .filter(res => !res.$deleted)
-          .map(res => {
-            const doc = res.$toObject();
-            // Stick on the internal id
-            doc.$id = res.$id;
-            return doc;
-          });
-
-        const proms = [];
-        if (toDelete.length > 0) {
-          proms.push(this.runWorkerFunction('remove', toDelete));
-        }
-
-        if (toUpdate.length > 0) {
-          proms.push(this.runWorkerFunction('update', toUpdate));
-        }
-
-        return Promise.all(proms);
+      update(res) {
+        this._dbUpdateSubject.next(res);
       }
 
       query(qry) {
-        return this.runWorkerFunction('query', qry);
+        return this._runWorkerFunction('query', qry);
       }
 
       // Returns true if it is a simple query that we can process with nedb
@@ -136,7 +151,7 @@ export default function() {
         var simple = true;
 
         if (Array.isArray(qry)) {
-          qry.forEach((val) => {
+          qry.forEach(val => {
             var kosher = this.qryIsSimple(val);
             if (!kosher) {
               simple = false;
@@ -147,7 +162,7 @@ export default function() {
           for (var key in qry) {
             var val = qry[key];
             // The key is fine if it doesn't begin with $ or is a simple operator
-            var kosherKey = (key[0] !== '$') || simpleOperators[key];
+            var kosherKey = key[0] !== '$' || simpleOperators[key];
 
             if (!kosherKey) {
               simple = false;
@@ -166,8 +181,44 @@ export default function() {
         return simple;
       }
 
+      awaitOutstandingUpdates() {
+        return $q(resolve => {
+          if (this._updateOutstanding) {
+            this.once('update', resolve);
+          } else {
+            resolve();
+          }
+        });
+      }
 
-      runWorkerFunction(fnName, ...args) {
+      _doBulkUpdate(resArr) {
+        if (!Array.isArray(resArr)) {
+          resArr = [resArr];
+        }
+
+        const toDelete = resArr.filter(res => res.$deleted).map(res => res.$id);
+        const toUpdate = resArr
+          .filter(res => !res.$deleted)
+          .map(res => {
+            const doc = res.$toObject();
+            // Stick on the internal id
+            doc.$id = res.$id;
+            return doc;
+          });
+
+        const proms = [];
+        if (toDelete.length > 0) {
+          proms.push(this._runWorkerFunction('remove', toDelete));
+        }
+
+        if (toUpdate.length > 0) {
+          proms.push(this._runWorkerFunction('update', toUpdate));
+        }
+
+        return $q.all(proms);
+      }
+
+      _runWorkerFunction(fnName, ...args) {
         return $q((resolve, reject) => {
           var id = utils.uuid();
           runOutsideAngular(() => {
@@ -207,7 +258,7 @@ export default function() {
 
     function runInAngular(fn) {
       if (ngZone) {
-        ngZone.run(fn);
+        ngZone.run(fn); // eslint-disable-line angular/module-getter
       } else {
         $rootScope.$apply(fn);
       }

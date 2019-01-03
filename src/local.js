@@ -2,27 +2,19 @@ import events from 'events';
 import * as utils from './utils';
 
 import values from 'lodash.values';
-
-import { Subject } from 'rxjs/Subject';
-import { Observable } from 'rxjs/Observable';
-import 'rxjs/add/observable/fromPromise';
-import 'rxjs/add/operator/filter';
-import 'rxjs/add/operator/mergeMap';
-import 'rxjs/add/operator/multicast';
-import 'rxjs/add/operator/first';
-import './bufferTimeReactive';
-
 import angular from 'angular';
 
 var MAX_STORAGE_SIZE = 3 * 1024 * 1024; // 3MB - should fit without problems in any browser
 
-export default function($q,
-                        $timeout,
-                        $window,
-                        ServerResourceFactory,
-                        QueryFactory,
-                        ResourceDBFactory,
-                        $localForage) {
+export default function(
+  $q,
+  $timeout,
+  $window,
+  ServerResourceFactory,
+  QueryFactory,
+  ResourceDBFactory,
+  $localForage
+) {
   'ngInject';
 
   var totalStorageSize = 0;
@@ -33,7 +25,6 @@ export default function($q,
   persistModeEmitter.setMaxListeners(0); // Unlimited listeners
 
   function LocalResourceFactory(url, rootKey, rootKeyPlural) {
-
     var db = ResourceDBFactory();
 
     // Create the server resource and query
@@ -54,23 +45,7 @@ export default function($q,
     var pStorageKey = utils.persistentStorageKey(url);
     var persistProm = null;
 
-    // Batch up any server get requests into periods of 20ms
-    const dbSyncSubject = new Subject();
-    const _syncOperationsSubj = new Subject();
-
-    const syncOperations = dbSyncSubject.filter(res => res)
-      .bufferTimeReactive(100)
-      .mergeMap(docs => {
-        // Remove duplicates
-        docs = [...new Set(docs)];
-
-        return Observable.fromPromise(performDbSync(docs));
-      })
-      .multicast(_syncOperationsSubj)
-      .refCount();
-
-
-    syncOperations.subscribe(() => {
+    db.on('update', () => {
       QueryList.refresh();
     });
 
@@ -224,7 +199,6 @@ export default function($q,
     }
 
     function updatedServer(res, newVal, oldVal) {
-
       // We could have been deleted (existing oldVal, null newval)
       if (oldVal && !newVal) {
         // We have been deleted. Cleanup ourselves and pass it up the chain
@@ -233,7 +207,7 @@ export default function($q,
       } else {
         res.$created = true;
 
-        if (oldVal._id && (newVal._id !== oldVal._id)) {
+        if (oldVal._id && newVal._id !== oldVal._id) {
           throw new Error('Not allowed to change id');
         }
 
@@ -264,7 +238,7 @@ export default function($q,
         syncToStorage(res);
 
         // We might have synced for the first time
-        syncOperations.first().subscribe(() => {
+        db.awaitOutstandingUpdates().then(() => {
           res.$serv.$promise.then(function() {
             if (!res.$resolved) {
               res.$deferred.resolve(res);
@@ -273,12 +247,6 @@ export default function($q,
           });
         });
       }
-    }
-
-    function performDbSync(docs) {
-      return db.update(docs).catch(function () {
-        // Pass - if something goes wrong then we can continue without it
-      });
     }
 
     function watchForPersistModeChanges() {
@@ -295,7 +263,6 @@ export default function($q,
         // Redo the persist
         doPersist();
       });
-
     }
 
     function doPersist() {
@@ -312,7 +279,7 @@ export default function($q,
 
       var data = [];
 
-      switch(persistMode) {
+      switch (persistMode) {
         case 'FULL':
           data = values(_resources).map(function(res) {
             return {
@@ -373,7 +340,11 @@ export default function($q,
     function persistChange() {
       // If we're already doing a persist or we dont have advanced storage options then
       // just return
-      if (persistProm || persistMode === 'NONE' || !utils.advancedStorage($localForage)) {
+      if (
+        persistProm ||
+        persistMode === 'NONE' ||
+        !utils.advancedStorage($localForage)
+      ) {
         return;
       }
 
@@ -387,7 +358,7 @@ export default function($q,
 
     function syncToStorage(res) {
       persistChange();
-      dbSyncSubject.next(res);
+      db.update(res);
     }
 
     function updateServer(val) {
@@ -404,7 +375,7 @@ export default function($q,
 
       this.$deferred = $q.defer();
       this.$promise = this.$deferred.promise; // An initial promise for our initial
-                                              // fetch or create of data
+      // fetch or create of data
       this.$resolved = false; // Have we had an initial resolution of the promise
       this.$created = false; // Have we pushed any values down to the server yet?
 

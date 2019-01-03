@@ -16,7 +16,7 @@ function normalizeQuery(qry) {
   } else if (qry.find) {
     return qry;
   } else {
-    return {find: qry};
+    return { find: qry };
   }
 }
 
@@ -46,7 +46,7 @@ function extendQuery(qry1, qry2) {
     if (existingOr) {
       _qry.find = clone(_qry.find);
     } else {
-      _qry.find = {$or: [_qry.find]};
+      _qry.find = { $or: [_qry.find] };
     }
 
     _qry.find.$or.push(qry2.find);
@@ -78,12 +78,15 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
      */
     function LocalQueryList(qry, limit, Resource, toRes) {
       // Allow qry to be a promise, and we return the raw (non _q bit)
-      qry = $q.when(qry).then(normalizeQuery).then(function(_qry) {
-        if (limit) {
-          _qry.limit = limit;
-        }
-        return _qry;
-      });
+      qry = $q
+        .when(qry)
+        .then(normalizeQuery)
+        .then(function(_qry) {
+          if (limit) {
+            _qry.limit = limit;
+          }
+          return _qry;
+        });
 
       // Generate the ServerQuery. We do this so we have something to fall back on
       // and also so that we will (or should!) get notified of changes from the server if
@@ -122,7 +125,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
         }
       }
 
-
       function get() {
         return Resource.get.apply(Resource, arguments);
       }
@@ -132,7 +134,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       }
 
       function query(_qry) {
-
         // Store off the qry making sure its a promise
         qry = $q.when(_qry);
 
@@ -156,7 +157,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
         }
 
         return db.query(_qry).then(function(ids) {
-
           // We can set the hasNext and hasPrev values to true here if we know there
           // are some. However only the server has the definitive ability to say
           // there arent any
@@ -207,17 +207,22 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
             return results;
           });
         });
-
       }
 
       function refreshQuery(forceServer) {
         // Perform our query
         var prom = qry.then(query).then(function(res) {
           // If we don't have any results then maybe wait for the server to return
-          if ((res.length === 0 && !serverResults.$resolved)) {
-            return serverResults.$promise.then(function() {
-              return refreshQuery();
-            });
+          if (res.length === 0 && !serverResults.$resolved) {
+            return serverResults.$promise
+              .then(function() {
+                // With the server results in we need to make sure
+                // they've propogated over to the db
+                return db.awaitOutstandingUpdates();
+              })
+              .then(function() {
+                return refreshQuery();
+              });
           } else {
             return res;
           }
@@ -234,13 +239,12 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       }
 
       function extendResults(obj, noSanitize, retServer) {
-
         // Sanitize the object
         if (!noSanitize) {
           if (obj._q) {
             obj = obj._q;
           } else {
-            obj = {find: obj};
+            obj = { find: obj };
           }
         }
 
@@ -255,22 +259,24 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
         var serverProm = serverResults.replace(_qry);
 
         // Do the query but replace the existing query
-        var localProm = $q.when(_qry).then(normalizeQuery).then(function(normQry) {
-
-          // We allow a query to resolve to something falsy - in which case we just
-          // drop it
-          if (!normQry) {
-            return;
-          }
-
-          return qry.then(function(oldqry) {
-            if (JSON.stringify(oldqry) !== JSON.stringify(normQry)) {
-              // query is different - continue
-
-              return query(normQry);
+        var localProm = $q
+          .when(_qry)
+          .then(normalizeQuery)
+          .then(function(normQry) {
+            // We allow a query to resolve to something falsy - in which case we just
+            // drop it
+            if (!normQry) {
+              return;
             }
+
+            return qry.then(function(oldqry) {
+              if (JSON.stringify(oldqry) !== JSON.stringify(normQry)) {
+                // query is different - continue
+
+                return query(normQry);
+              }
+            });
           });
-        });
 
         return retServer ? serverProm : localProm;
       }
@@ -342,7 +348,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
 
     var refreshTimer;
     LocalQueryList.refresh = function refresh() {
-
       // If we have a timer outstanding then just return - a refresh will happen soon.
       if (!refreshTimer) {
         refreshTimer = $timeout(doRefresh, 100);
@@ -366,12 +371,15 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
      */
     function ServerQueryList(qry, limit, Resource) {
       // Allow qry to be a promise
-      qry = $q.when(qry).then(normalizeQuery).then(function(_qry) {
-        if (limit) {
-          _qry.limit = limit;
-        }
-        return _qry;
-      });
+      qry = $q
+        .when(qry)
+        .then(normalizeQuery)
+        .then(function(_qry) {
+          if (limit) {
+            _qry.limit = limit;
+          }
+          return _qry;
+        });
 
       var emitPromise = null;
       var results = new ArrayEmitter();
@@ -381,7 +389,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       var _pagingOpts = {};
 
       results.loading = true;
-
 
       function query(data) {
         // We only want to do one emit at a time (otherwise we could get into a bad state)
@@ -449,7 +456,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
           }
 
           return rprom.then(function(transformed) {
-
             results.length = 0;
             transformed.forEach(function(res) {
               results.push(res);
@@ -457,11 +463,11 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
 
             // Since we now have data in our array store off limit data
             currentLimit = tmpResults.length;
-            results.$skip = currentSkip = (qry && qry.skip) ? qry.skip : 0;
+            results.$skip = currentSkip = qry && qry.skip ? qry.skip : 0;
             lastBatchSize = lastBatchSize || tmpResults.length;
             _pagingOpts = pagingOpts;
-            results.hasNext = (pagingOpts.next != null);
-            results.hasPrev = (pagingOpts.prev != null);
+            results.hasNext = pagingOpts.next != null;
+            results.hasPrev = pagingOpts.prev != null;
 
             // Data has come back
             results.loading = false;
@@ -478,7 +484,6 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
       function refreshQuery(force) {
         var req = query(qry);
         var promise = req.then(function(res) {
-
           // If we get no response (the app could be offline) then just resolve with
           // the existing results
           if (angular.isUndefined(res)) {
@@ -496,49 +501,49 @@ export default function($rootScope, $q, $timeout, $injector, Chain) {
 
       function replace(_qry) {
         // Do the query but replace the existing query
-        return $q.when(_qry).then(normalizeQuery).then(function(normQry) {
-
-          // We allow a query to resolve to something falsy - in which case we just
-          // drop it
-          if (!normQry) {
-            return;
-          }
-
-          return qry.then(function(oldqry) {
-            if (JSON.stringify(oldqry) !== JSON.stringify(normQry)) {
-              // query is different - continue
-              var req = query(normQry);
-
-              var promise = req.then(function(res) {
-                // If we get no response (the app could be offline) then just resolve with
-                // the existing results
-                if (angular.isUndefined(res)) {
-                  results.loading = false;
-                  return results;
-                }
-
-                // We do have a response. Continue
-                var _qryId = res.qryId;
-                var data = res.data;
-
-                return newData(_qryId, data);
-              });
-
-              return promise;
+        return $q
+          .when(_qry)
+          .then(normalizeQuery)
+          .then(function(normQry) {
+            // We allow a query to resolve to something falsy - in which case we just
+            // drop it
+            if (!normQry) {
+              return;
             }
-          });
-        });
 
+            return qry.then(function(oldqry) {
+              if (JSON.stringify(oldqry) !== JSON.stringify(normQry)) {
+                // query is different - continue
+                var req = query(normQry);
+
+                var promise = req.then(function(res) {
+                  // If we get no response (the app could be offline) then just resolve with
+                  // the existing results
+                  if (angular.isUndefined(res)) {
+                    results.loading = false;
+                    return results;
+                  }
+
+                  // We do have a response. Continue
+                  var _qryId = res.qryId;
+                  var data = res.data;
+
+                  return newData(_qryId, data);
+                });
+
+                return promise;
+              }
+            });
+          });
       }
 
       function extendResults(obj, noSanitize) {
-
         // Sanitize the object
         if (!noSanitize) {
           if (obj._q) {
             obj = obj._q;
           } else {
-            obj = {find: obj};
+            obj = { find: obj };
           }
         }
 
