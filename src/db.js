@@ -50,7 +50,7 @@ export default function() {
 
   this.$get = database;
 
-  function database($q, $rootScope, $log, $injector) {
+  function database($q, $rootScope, $log, $injector, $timeout) {
     'ngInject';
 
     var ngZone;
@@ -184,7 +184,9 @@ export default function() {
       awaitOutstandingUpdates() {
         return $q(resolve => {
           if (this._updateOutstanding) {
-            this.once('update', resolve);
+            this.once('update', () => {
+              $timeout(() => resolve());
+            });
           } else {
             resolve();
           }
