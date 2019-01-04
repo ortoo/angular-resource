@@ -6,10 +6,8 @@ import isFunction from 'lodash.isfunction';
 import { Subject } from 'rxjs/Subject';
 import { Observable } from 'rxjs/Observable';
 import 'rxjs/add/observable/fromPromise';
-import 'rxjs/add/operator/filter';
 import 'rxjs/add/operator/mergeMap';
 import 'rxjs/add/operator/multicast';
-import 'rxjs/add/operator/do';
 import './bufferTimeReactive';
 
 // db-worker-string is automatically built
@@ -101,10 +99,6 @@ export default function() {
 
         // Batch up db updates
         const updateOperations = dbUpdateSubject
-          .filter(res => res)
-          .do(() => {
-            this._updateOutstanding = true;
-          })
           .bufferTimeReactive(100)
           .mergeMap(docs => {
             // Remove duplicates
@@ -112,13 +106,11 @@ export default function() {
 
             return Observable.fromPromise(this._doBulkUpdate(docs));
           })
-          .do(() => {
-            this._updateOutstanding = false;
-          })
           .multicast(_updateOperationsSubj)
           .refCount();
 
         updateOperations.subscribe(() => {
+          this._updateOutstanding = false;
           this.emit('update');
         });
 
@@ -139,7 +131,10 @@ export default function() {
       }
 
       update(res) {
-        this._dbUpdateSubject.next(res);
+        if (res) {
+          this._updateOutstanding = true;
+          this._dbUpdateSubject.next(res);
+        }
       }
 
       query(qry) {
