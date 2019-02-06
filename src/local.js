@@ -1,7 +1,6 @@
 import events from 'events';
 import * as utils from './utils';
 
-import values from 'lodash.values';
 import angular from 'angular';
 
 var MAX_STORAGE_SIZE = 3 * 1024 * 1024; // 3MB - should fit without problems in any browser
@@ -112,10 +111,6 @@ export default function(
     }
 
     function remove(skipServer) {
-      if (this._id) {
-        delete _resources[this._id];
-      }
-
       this.$deleted = true;
 
       // Kick the database
@@ -234,8 +229,11 @@ export default function(
 
         // Notify that we have changed
         res.$emitter.emit('update', res.$toObject(), preexist);
-        // Kick the db
-        syncToStorage(res);
+
+        if (newVal) {
+          // Kick the db
+          syncToStorage(res);
+        }
 
         // We might have synced for the first time
         db.awaitOutstandingUpdates().then(() => {
@@ -279,9 +277,13 @@ export default function(
 
       var data = [];
 
+      const resources = Object.values(_resources).filter(
+        res => res._id && !res.$deleted
+      );
+
       switch (persistMode) {
         case 'FULL':
-          data = values(_resources).map(function(res) {
+          data = resources.map(res => {
             return {
               obj: res.$toObject(),
               lastreq: _lastreqs[res._id]
@@ -290,7 +292,7 @@ export default function(
           break;
 
         case 'MIN':
-          values(_resources).forEach(function(res) {
+          resources.forEach(function(res) {
             if (_reqs[res._id]) {
               data.push({
                 obj: res.$toObject(),

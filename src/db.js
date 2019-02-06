@@ -87,32 +87,13 @@ export default function() {
       constructor() {
         super();
 
-        const dbUpdateSubject = new Subject();
-        const _updateOperationsSubj = new Subject();
-
         this.cbMaps = {};
         this.dbid = utils.uuid();
-        this._dbUpdateSubject = dbUpdateSubject;
         this._updateOutstanding = false;
 
         this.setMaxListeners(0);
 
-        // Batch up db updates
-        const updateOperations = dbUpdateSubject
-          .bufferTimeReactive(100)
-          .mergeMap(docs => {
-            // Remove duplicates
-            docs = [...new Set(docs)];
-
-            return Observable.fromPromise(this._doBulkUpdate(docs));
-          })
-          .multicast(_updateOperationsSubj)
-          .refCount();
-
-        updateOperations.subscribe(() => {
-          this._updateOutstanding = false;
-          this.emit('update');
-        });
+        this._setupUpdateStream();
 
         runOutsideAngular(() => {
           worker.addEventListener('message', event => {
@@ -186,6 +167,43 @@ export default function() {
             resolve();
           }
         });
+      }
+
+      _setupUpdateStream() {
+        const dbUpdateSubject = new Subject();
+        const _updateOperationsSubj = new Subject();
+
+        this._dbUpdateSubject = dbUpdateSubject;
+
+        // Batch up db updates
+        const updateOperations = dbUpdateSubject
+          .bufferTimeReactive(100)
+          .mergeMap(docs => {
+            // Remove duplicates
+            docs = [...new Set(docs)];
+
+            return Observable.fromPromise(
+              // We catch the errors here and log them as we don't
+              // want the stream to error out - it would then stop and
+              // no more events will be passed through!
+              this._doBulkUpdate(docs).catch(err => $log.error(err))
+            );
+          })
+          .multicast(_updateOperationsSubj)
+          .refCount();
+
+        updateOperations.subscribe(
+          () => {
+            this._updateOutstanding = false;
+            this.emit('update');
+          },
+          err => {
+            // If this goes wrong for any reason, just reset
+            // the stream
+            $log.error(err);
+            this._setupUpdateStream();
+          }
+        );
       }
 
       _doBulkUpdate(resArr) {

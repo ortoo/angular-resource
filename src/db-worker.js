@@ -17,7 +17,7 @@ class Database {
     this.RES_TO_DB_ID_MAP = {};
 
     // Stick an index on __id - our id field.
-    this.db.ensureIndex({ fieldName: '__id' }, function (err) {
+    this.db.ensureIndex({ fieldName: '__id' }, function(err) {
       if (err) {
         throw err;
       }
@@ -29,20 +29,19 @@ class Database {
       ids = [ids];
     }
 
-    const dbIds = ids
-      .map(id => this.RES_TO_DB_ID_MAP[id])
-      .filter(id => id);
+    const dbIds = ids.map(id => this.RES_TO_DB_ID_MAP[id]).filter(id => id);
 
     for (let id of ids) {
       delete this.RES_TO_DB_ID_MAP[id];
     }
 
     if (dbIds.length > 0) {
-      this.db.remove({_id: {$in: dbIds}}, {multi: true}, function(err) {
+      this.db.remove({ _id: { $in: dbIds } }, { multi: true }, function(err) {
         callback(err);
       });
     } else {
-      callback(new Error(`No objects to remove with ids ${ids}`));
+      // Ignore
+      callback();
     }
   }
 
@@ -61,7 +60,7 @@ class Database {
         delete doc.$id;
         var dbid = this.RES_TO_DB_ID_MAP[doc.__$id];
         if (dbid) {
-          this.db.update({_id: dbid}, doc, {}, function(err) {
+          this.db.update({ _id: dbid }, doc, {}, function(err) {
             if (err) {
               return reject(err);
             }
@@ -141,7 +140,6 @@ function createDbFind(qry) {
   return qry;
 }
 
-
 function createCallback(id) {
   return function callback(err, resp) {
     self.postMessage({
@@ -171,7 +169,7 @@ function handleMessage(event) {
   var cb = createCallback(id);
   var db = getDatabase(dbid);
 
-  switch(data.fnName) {
+  switch (data.fnName) {
     case 'update':
       db.update(...args, cb);
       break;
