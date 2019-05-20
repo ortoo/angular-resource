@@ -28,7 +28,8 @@ var simpleOperators = {
   $size: true,
   $or: true,
   $and: true,
-  $not: true
+  $not: true,
+  $elemMatch: true
 };
 
 // We may not have the ability to create blobs, but we may be able to use a fallback to an
