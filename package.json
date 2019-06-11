@@ -54,7 +54,6 @@
     "lodash.uniq": "^3.2.2",
     "lodash.values": "^3.0.0",
     "lodash.without": "^3.2.1",
-    "moment": "^2.10.6",
     "nedb": "^1.8.0",
     "rxjs": "^5.4.3"
   },

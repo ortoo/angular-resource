@@ -1,5 +1,4 @@
 import jiff from 'jiff';
-import moment from 'moment';
 
 import clone from 'lodash.clone';
 import pluck from 'lodash.pluck';
@@ -24,10 +23,7 @@ export function convertJsonDates(jsonData) {
       // The value is a string - does it match any of our things we want to convert
       if (TIMESTAMP_RE.test(val)) {
         // We're probably a timestamp
-        var dt = moment(val);
-        if (dt.isValid()) {
-          res = dt.toDate();
-        }
+        res = new Date(val);
       }
     } else if (Array.isArray(val) || angular.isObject(val)) {
       res = convertJsonDates(val);
@@ -69,7 +65,6 @@ export function applyPatch(res, patch) {
 }
 
 export function mergeObjects(mine, old, yours) {
-
   // Make copies - we might modify the objects if ids dont exist
   mine = clone(mine);
   old = clone(old);
@@ -117,10 +112,7 @@ export function toJsonReplacer(key, value) {
 export function fromJsonReviver(key, value) {
   var val = value;
   if (angular.isString(value) && TIMESTAMP_RE.test(value)) {
-    var dt = moment(value);
-    if (dt.isValid()) {
-      val = dt.toDate();
-    }
+    val = new Date(value);
   }
 
   return val;
@@ -141,7 +133,7 @@ export function toObject(res) {
       return convertJsonDates(JSON.parse(str));
     }
 
-    throw(err);
+    throw err;
   }
 }
 
@@ -151,7 +143,7 @@ export function removeResValues(res) {
   });
 }
 
-export function setResValues(res, vals){
+export function setResValues(res, vals) {
   for (var key in vals) {
     res[key] = vals[key];
   }
@@ -168,7 +160,8 @@ export function advancedStorage($localForage) {
 // lifted from here -> http://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid-in-javascript/2117523#2117523
 export function uuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
+    var r = (Math.random() * 16) | 0,
+      v = c == 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
